@@ -322,10 +322,10 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
     outArr(outRow, 21) = auditEnabled
     outArr(outRow, 22) = secured
     outArr(outRow, 25) = advFind
-    outArr(outRow, 28) = description
+    outArr(outRow, 26) = description
 
     If LCase(Trim(attrType)) = "text" Or LCase(Trim(attrType)) = "multiline text" Then
-        outArr(outRow, 34) = additionalData
+        outArr(outRow, 32) = additionalData
     End If
 End Sub
 
