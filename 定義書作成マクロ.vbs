@@ -153,7 +153,7 @@ Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
     On Error GoTo 0
 
     FillTableSheet wsTable, values1, fieldInfo
-    FillFieldSheet wsField, fieldInfo
+    FillFieldSheet wsField, fieldInfo, values1
     wsCover.Range("B7").Value = "エンティティ定義書_ID_" & displayName & "_v0.2"
 
     outputPath = gFso.BuildPath(outputFolderPath, SanitizeFileName("エンティティ定義書_ID_" & displayName & "_v0.2.xlsx"))
@@ -199,6 +199,7 @@ Function GetSheet1Values(ws)
     arr(26) = Nz(ws.Range("DT4").Value2)
     arr(27) = Nz(ws.Range("CD4").Value2)
     arr(28) = Nz(ws.Range("CS4").Value2)
+    arr(29) = Nz(ws.Range("DJ4").Value2)
 
     GetSheet1Values = arr
 End Function
@@ -260,19 +261,22 @@ Sub FillTableSheet(wsTable, values1, fieldInfo)
     wsTable.Range("E5:E41").Font.Color = COLOR_BLACK
 End Sub
 
-Sub FillFieldSheet(wsField, fieldInfo)
+Sub FillFieldSheet(wsField, fieldInfo, values1)
     Dim dataArr, headerMap, rowCount
-    Dim outArr, r
+    Dim outArr, r, djKey, dmKey
 
     dataArr = fieldInfo(0)
     Set headerMap = fieldInfo(1)
     rowCount = UBound(dataArr, 1) - 1
     If rowCount <= 0 Then Exit Sub
 
+    djKey = Nz(values1(29))
+    dmKey = Nz(values1(11))
+
     outArr = wsField.Range("C7:AJ" & (6 + rowCount)).Value
 
     For r = 2 To UBound(dataArr, 1)
-        FillFieldRow outArr, r - 1, dataArr, r, headerMap
+        FillFieldRow outArr, r - 1, dataArr, r, headerMap, djKey, dmKey
     Next
 
     wsField.Range("C7:AJ" & (6 + rowCount)).Value = outArr
@@ -282,10 +286,10 @@ Sub FillFieldSheet(wsField, fieldInfo)
     wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("D7:D" & (6 + rowCount)).Value
 End Sub
 
-Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
+Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, ByVal djKey, ByVal dmKey)
     Dim schemaName, displayName, customAttr, attrType, typeValue, requiredLevel
     Dim auditEnabled, secured, advFind, description, additionalData
-    Dim info, targetText, defaultText
+    Dim info, targetText, defaultText, rowKey
 
     schemaName = GetCellByHeader(dataArr, srcRow, headerMap, "Schema Name")
     displayName = GetCellByHeader(dataArr, srcRow, headerMap, "Display Name")
@@ -298,6 +302,7 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
     advFind = ConvertBooleanForField(GetCellByHeader(dataArr, srcRow, headerMap, "ValidFor AdvancedFind"))
     description = GetCellByHeader(dataArr, srcRow, headerMap, "Description")
     additionalData = CleanAdditionalData(GetCellByHeader(dataArr, srcRow, headerMap, "Additional data"))
+    rowKey = Nz(dataArr(srcRow, 1))
 
     info = BuildAttributeTypeInfo(attrType, additionalData)
     targetText = ExtractValueFromAdditionalData(additionalData, "Target:")
@@ -326,6 +331,15 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
     outArr(outRow, 22) = secured
     outArr(outRow, 25) = advFind
     outArr(outRow, 26) = description
+
+    If LCase(Trim(rowKey)) = LCase(Trim(djKey)) Then
+        outArr(outRow, 5) = "○"
+        outArr(outRow, 6) = "○"
+    End If
+
+    If LCase(Trim(rowKey)) = LCase(Trim(dmKey)) Then
+        outArr(outRow, 6) = "○"
+    End If
 
     If LCase(Trim(attrType)) = "text" Or LCase(Trim(attrType)) = "multiline text" Then
         outArr(outRow, 32) = additionalData
