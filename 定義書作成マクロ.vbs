@@ -770,11 +770,14 @@ Function StartExcel(templatePath, ByRef message)
     gExcel.ScreenUpdating = False
     gExcel.EnableEvents = False
     gExcel.AskToUpdateLinks = False
+
+    Err.Clear
     gExcel.Calculation = xlCalculationManual
+    Err.Clear
 
     Set gTemplateWb = gExcel.Workbooks.Open(templatePath, 0, True)
     If Err.Number <> 0 Or gTemplateWb Is Nothing Then
-        message = "テンプレートを開けません: " & Err.Description
+        message = "テンプレートを開けません: " & templatePath & " / " & Err.Description
         Err.Clear
         On Error GoTo 0
         Exit Function
