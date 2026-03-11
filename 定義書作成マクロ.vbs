@@ -297,7 +297,8 @@ Sub FillFieldSheet(wsField, fieldInfo, values1)
     wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("AI7:AI" & (6 + rowCount)).Value
     wsField.Range("AI7:AI" & (6 + rowCount)).ClearContents
     wsField.Range("AL5").Value = "TempTarget"
-    wsField.Range("AL7:AL" & (6 + rowCount)).Value = wsField.Range("U7:U" & (6 + rowCount)).Value
+    wsField.Range("AL7:AL" & (6 + rowCount)).Value = wsField.Range("AJ7:AJ" & (6 + rowCount)).Value
+    wsField.Range("AJ7:AJ" & (6 + rowCount)).ClearContents
 
     ApplyMemoMapping wsField, rowCount
     wsField.Columns(38).Delete
@@ -386,6 +387,7 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, B
     outArr(outRow, 25) = advFind
     outArr(outRow, 26) = description
     outArr(outRow, 33) = schemaName
+    outArr(outRow, 34) = rawTargetText
 
     If LCase(Trim(rowKey)) = LCase(Trim(djKey)) Then
         outArr(outRow, 5) = "○"
