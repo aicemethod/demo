@@ -296,8 +296,11 @@ Sub FillFieldSheet(wsField, fieldInfo, values1)
     wsField.Range("AG5").Value = "Schema Name"
     wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("AI7:AI" & (6 + rowCount)).Value
     wsField.Range("AI7:AI" & (6 + rowCount)).ClearContents
+    wsField.Range("AL5").Value = "TempTarget"
+    wsField.Range("AL7:AL" & (6 + rowCount)).Value = wsField.Range("U7:U" & (6 + rowCount)).Value
 
     ApplyMemoMapping wsField, rowCount
+    wsField.Columns(38).Delete
     TrimEmptyFieldRows wsField, rowCount
 End Sub
 
@@ -1028,7 +1031,7 @@ Sub Cleanup()
 End Sub
 
 Sub ApplyMemoMapping(wsField, rowCount)
-    Dim rowNo, keyText, mappedText, additionalData
+    Dim rowNo, keyText, mappedText
     Dim lastRow
 
     If rowCount <= 0 Then Exit Sub
@@ -1036,12 +1039,7 @@ Sub ApplyMemoMapping(wsField, rowCount)
     lastRow = 6 + rowCount
 
     For rowNo = 7 To lastRow
-        additionalData = CStr(Nz(wsField.Cells(rowNo, 34).Value2))
-        keyText = ExtractValueFromAdditionalData(additionalData, "Target:")
-        If keyText = "" Then
-            keyText = ExtractValueFromAdditionalData(additionalData, "targets:")
-        End If
-        keyText = LCase(Trim(CStr(keyText)))
+        keyText = LCase(Trim(CStr(Nz(wsField.Cells(rowNo, 38).Value2))))
 
         If keyText <> "" Then
             If Not gMemoMap Is Nothing And gMemoMap.Exists(keyText) Then
@@ -1055,22 +1053,24 @@ Sub ApplyMemoMapping(wsField, rowCount)
 End Sub
 
 Sub TrimEmptyFieldRows(wsField, rowCount)
-    Dim lastRow, rowNo, deleteFrom
+    Dim lastRow, rowNo, lastValueRow
 
     If rowCount <= 0 Then Exit Sub
 
     lastRow = 6 + rowCount
-    deleteFrom = 0
+    lastValueRow = 0
 
-    For rowNo = 7 To lastRow
-        If Trim(CStr(Nz(wsField.Cells(rowNo, 3).Value2))) = "" Then
-            deleteFrom = rowNo
+    For rowNo = lastRow To 7 Step -1
+        If Trim(CStr(Nz(wsField.Cells(rowNo, 3).Value2))) <> "" Then
+            lastValueRow = rowNo
             Exit For
         End If
     Next
 
-    If deleteFrom > 0 Then
-        wsField.Rows(deleteFrom & ":" & lastRow).Delete
+    If lastValueRow = 0 Then
+        wsField.Rows("7:" & wsField.Rows.Count).Delete
+    ElseIf lastValueRow < wsField.Rows.Count Then
+        wsField.Rows((lastValueRow + 1) & ":" & wsField.Rows.Count).Delete
     End If
 End Sub
 
