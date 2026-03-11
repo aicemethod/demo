@@ -317,6 +317,10 @@ Sub ApplyEnglishValues(wsField, englishValues, rowCount)
 
     outArr = wsField.Range("E7:E" & (6 + rowCount)).Value
 
+    For i = 1 To UBound(outArr, 1)
+        outArr(i, 1) = ""
+    Next
+
     For i = 0 To UBound(englishValues)
         If (i + 1) <= UBound(outArr, 1) Then
             outArr(i + 1, 1) = englishValues(i)
@@ -572,7 +576,6 @@ End Function
 
 Function FindEnglishFilePath(sourceFilePath)
     Dim scriptFolderPath, englishRootPath, englishPath
-    Dim baseName, folder, file, ext
 
     scriptFolderPath = gFso.GetParentFolderName(WScript.ScriptFullName)
     englishRootPath = gFso.BuildPath(scriptFolderPath, "30_英語ファイル")
@@ -581,21 +584,6 @@ Function FindEnglishFilePath(sourceFilePath)
     If gFso.FileExists(englishPath) Then
         FindEnglishFilePath = englishPath
     Else
-        baseName = LCase(gFso.GetBaseName(sourceFilePath))
-        If gFso.FolderExists(englishRootPath) Then
-            Set folder = gFso.GetFolder(englishRootPath)
-            For Each file In folder.Files
-                ext = LCase(gFso.GetExtensionName(file.Name))
-                If gFso.GetBaseName(file.Name) <> "" Then
-                    If LCase(gFso.GetBaseName(file.Name)) = baseName Then
-                        If ext = "xlsx" Or ext = "xlsm" Or ext = "xls" Or ext = "xlsb" Then
-                            FindEnglishFilePath = file.Path
-                            Exit Function
-                        End If
-                    End If
-                End If
-            Next
-        End If
         FindEnglishFilePath = ""
     End If
 End Function
