@@ -174,14 +174,14 @@ Function GetSheet1Values(ws)
     arr(1) = Nz(ws.Range("AI4").Value2)
     arr(2) = Nz(ws.Range("AH4").Value2)
     arr(3) = Nz(ws.Range("AW4").Value2)
-    arr(4) = ConvertPrefixName(Nz(ws.Range("D4").Value2))
-    arr(5) = ConvertPrefixName(Nz(ws.Range("E4").Value2))
+    arr(4) = Nz(ws.Range("D4").Value2)
+    arr(5) = Nz(ws.Range("E4").Value2)
     arr(6) = Nz(ws.Range("DU4").Value2)
     arr(7) = Nz(ws.Range("I4").Value2)
     arr(8) = Nz(ws.Range("BA4").Value2)
     arr(9) = Nz(ws.Range("AL4").Value2)
-    arr(10) = ConvertPrefixName(Nz(ws.Range("DK4").Value2))
-    arr(11) = ConvertPrefixName(Nz(ws.Range("DM4").Value2))
+    arr(10) = Nz(ws.Range("DK4").Value2)
+    arr(11) = Nz(ws.Range("DM4").Value2)
     arr(12) = Nz(ws.Range("BQ4").Value2)
     arr(13) = Nz(ws.Range("AA4").Value2)
     arr(14) = Nz(ws.Range("AN4").Value2)
@@ -213,13 +213,13 @@ Sub FillTableSheet(wsTable, values1, fieldInfo)
     tableArr(2, 1) = values1(1)
     tableArr(3, 1) = values1(2)
     tableArr(4, 1) = ConvertBooleanForTable(values1(3))
-    tableArr(5, 1) = values1(4)
-    tableArr(6, 1) = values1(5)
+    tableArr(5, 1) = ConvertPrefixName(values1(4))
+    tableArr(6, 1) = ConvertPrefixName(values1(5))
     tableArr(7, 1) = values1(6)
     tableArr(8, 1) = values1(7)
     tableArr(9, 1) = DefaultText(values1(8), "なし")
     tableArr(10, 1) = values1(9)
-    tableArr(11, 1) = values1(10)
+    tableArr(11, 1) = ConvertPrefixName(values1(10))
 
     dmKey = values1(11)
     foundData = FindFieldRow(fieldInfo, dmKey)
@@ -227,12 +227,12 @@ Sub FillTableSheet(wsTable, values1, fieldInfo)
     If IsArray(foundData) Then
         tableArr(12, 1) = ConvertBooleanForTable(foundData(2))
         tableArr(13, 1) = ConvertBooleanForTable(foundData(4))
-        tableArr(14, 1) = ConvertBooleanForTable(foundData(1))
-        tableArr(15, 1) = dmKey
+        tableArr(14, 1) = ConvertPrefixName(foundData(1))
+        tableArr(15, 1) = ConvertPrefixName(dmKey)
         tableArr(16, 1) = ConvertBooleanForTable(foundData(7))
         tableArr(17, 1) = ExtractTextMaxLength(foundData(12))
     Else
-        tableArr(15, 1) = dmKey
+        tableArr(15, 1) = ConvertPrefixName(dmKey)
     End If
 
     tableArr(18, 1) = ConvertBooleanForTable(values1(12))
@@ -287,7 +287,7 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
     Dim auditEnabled, secured, advFind, description, additionalData
     Dim info, targetText, defaultText
 
-    schemaName = ConvertPrefixName(GetCellByHeader(dataArr, srcRow, headerMap, "Schema Name"))
+    schemaName = GetCellByHeader(dataArr, srcRow, headerMap, "Schema Name")
     displayName = GetCellByHeader(dataArr, srcRow, headerMap, "Display Name")
     customAttr = ConvertCustomAttribute(GetCellByHeader(dataArr, srcRow, headerMap, "Custom Attribute"))
     attrType = GetCellByHeader(dataArr, srcRow, headerMap, "Attribute Type")
@@ -311,7 +311,7 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
         defaultText = "なし"
     End If
 
-    outArr(outRow, 1) = schemaName
+    outArr(outRow, 1) = ConvertPrefixName(schemaName)
     outArr(outRow, 2) = displayName
     outArr(outRow, 4) = customAttr
     outArr(outRow, 7) = info(0)
