@@ -272,7 +272,7 @@ Sub FillFieldSheet(wsField, fieldInfo)
     ReDim outArr(rowCount - 1, 33)
 
     For r = 2 To UBound(dataArr, 1)
-        FillFieldRow outArr, r - 1, dataArr, r, headerMap
+        FillFieldRow outArr, r - 2, dataArr, r, headerMap
     Next
 
     wsField.Range("D7:AK" & (6 + rowCount)).Value = outArr
