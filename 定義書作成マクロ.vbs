@@ -301,6 +301,7 @@ Sub FillFieldSheet(wsField, fieldInfo, values1)
     wsField.Range("AJ7:AJ" & (6 + rowCount)).ClearContents
 
     ApplyMemoMapping wsField, rowCount
+    wsField.Range("AH7:AH" & (6 + rowCount)).ClearContents
     wsField.Columns(38).Delete
     TrimEmptyFieldRows wsField, rowCount
 End Sub
