@@ -558,11 +558,10 @@ Function ReadEnglishSheetValues(sourceFilePath)
 End Function
 
 Function FindEnglishFilePath(sourceFilePath)
-    Dim sourceFolderPath, baseParentPath, englishRootPath, englishPath
+    Dim scriptFolderPath, englishRootPath, englishPath
 
-    sourceFolderPath = gFso.GetParentFolderName(sourceFilePath)
-    baseParentPath = gFso.GetParentFolderName(sourceFolderPath)
-    englishRootPath = gFso.BuildPath(baseParentPath, "30_英語ファイル")
+    scriptFolderPath = gFso.GetParentFolderName(WScript.ScriptFullName)
+    englishRootPath = gFso.BuildPath(scriptFolderPath, "30_英語ファイル")
     englishPath = gFso.BuildPath(englishRootPath, gFso.GetFileName(sourceFilePath))
 
     If gFso.FileExists(englishPath) Then
