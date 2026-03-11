@@ -530,17 +530,10 @@ End Function
 Function ReadEnglishSheetValues(sourceFilePath)
     Dim englishPath, englishWb, englishWs
     Dim lastRow, arr2d, values()
-    Dim i, rowCount, debugMessage
+    Dim i, rowCount
 
     englishPath = FindEnglishFilePath(sourceFilePath)
-    debugMessage = "英語ファイル確認" & vbCrLf & _
-                   "元ファイル: " & gFso.GetFileName(sourceFilePath) & vbCrLf & _
-                   "探索先: " & englishPath
-
-    If englishPath = "" Then
-        MsgBox debugMessage & vbCrLf & "結果: ファイル未検出", vbExclamation, "英語ファイル診断"
-        Exit Function
-    End If
+    If englishPath = "" Then Exit Function
 
     Set englishWb = Nothing
     Set englishWs = Nothing
@@ -548,14 +541,12 @@ Function ReadEnglishSheetValues(sourceFilePath)
     On Error Resume Next
     Set englishWb = gExcel.Workbooks.Open(englishPath, 0, True)
     If Err.Number <> 0 Or englishWb Is Nothing Then
-        MsgBox debugMessage & vbCrLf & "結果: ファイルを開けません / " & Err.Description, vbExclamation, "英語ファイル診断"
         Err.Clear
         On Error GoTo 0
         Exit Function
     End If
 
     If englishWb.Sheets.Count < 2 Then
-        MsgBox debugMessage & vbCrLf & "結果: 2枚目シートなし", vbExclamation, "英語ファイル診断"
         On Error GoTo 0
         CloseWorkbookSafe englishWb, False
         Exit Function
@@ -565,7 +556,6 @@ Function ReadEnglishSheetValues(sourceFilePath)
     lastRow = englishWs.Cells(englishWs.Rows.Count, 3).End(xlUp).Row
 
     If lastRow < 2 Then
-        MsgBox debugMessage & vbCrLf & "結果: シート2のC列に2行目以降の値なし", vbExclamation, "英語ファイル診断"
         On Error GoTo 0
         CloseWorkbookSafe englishWb, False
         Exit Function
@@ -581,7 +571,6 @@ Function ReadEnglishSheetValues(sourceFilePath)
 
     On Error GoTo 0
     CloseWorkbookSafe englishWb, False
-    MsgBox debugMessage & vbCrLf & "結果: 取得成功 / 件数=" & rowCount, vbInformation, "英語ファイル診断"
     ReadEnglishSheetValues = values
 End Function
 
