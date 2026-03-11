@@ -6,15 +6,17 @@ Const xlCalculationManual = -4135
 Const xlCalculationAutomatic = -4105
 Const xlOpenXMLWorkbook = 51
 Const COLOR_BLACK = 0
+Const COLOR_GRAY = 12632256
 
 Dim gFso
 Dim gExcel
 Dim gTemplateWb
+Dim gMemoMap
 
 Main
 
 Sub Main()
-    Dim folderPath, templatePath, outputFolderPath
+    Dim folderPath, templatePath, outputFolderPath, memoPath
     Dim files, message
 
     Set gFso = CreateObject("Scripting.FileSystemObject")
@@ -38,6 +40,7 @@ Sub Main()
 
     outputFolderPath = gFso.BuildPath(gFso.GetParentFolderName(folderPath), "20_作成済定義書")
     EnsureFolder outputFolderPath
+    memoPath = FindMemoPath(folderPath)
 
     files = CollectExcelFiles(folderPath, templatePath)
     If IsEmpty(files) Then
@@ -46,6 +49,12 @@ Sub Main()
     End If
 
     If Not StartExcel(templatePath, message) Then
+        Cleanup
+        MsgBox message, vbCritical, "エラー"
+        Exit Sub
+    End If
+
+    If Not LoadMemoMap(memoPath, message) Then
         Cleanup
         MsgBox message, vbCritical, "エラー"
         Exit Sub
@@ -282,8 +291,7 @@ Sub FillFieldSheet(wsField, fieldInfo, values1)
     wsField.Range("C7:AJ" & (6 + rowCount)).Value = outArr
     wsField.Range("C7:AJ" & (6 + rowCount)).Font.Color = COLOR_BLACK
 
-    wsField.Range("AG5").Value = "ServiceCRMフィールド名"
-    wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("D7:D" & (6 + rowCount)).Value
+    ApplyMemoMapping wsField, rowCount
 End Sub
 
 Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, ByVal djKey, ByVal dmKey)
@@ -728,6 +736,18 @@ Function FindTemplatePath(folderPath)
     End If
 End Function
 
+Function FindMemoPath(folderPath)
+    Dim parentPath, memoPath
+
+    parentPath = gFso.GetParentFolderName(folderPath)
+    memoPath = gFso.BuildPath(parentPath, "エンティティ定義書作成メモ.xlsx")
+    If gFso.FileExists(memoPath) Then
+        FindMemoPath = memoPath
+    Else
+        FindMemoPath = ""
+    End If
+End Function
+
 Function CollectExcelFiles(folderPath, templatePath)
     Dim folder, file, count, items(), ext, templateName
 
@@ -805,6 +825,55 @@ Function StartExcel(templatePath, ByRef message)
     StartExcel = True
 End Function
 
+Function LoadMemoMap(memoPath, ByRef message)
+    Dim memoWb, memoWs, memoArr
+    Dim rowNo, keyText, valueText
+
+    LoadMemoMap = False
+    message = ""
+
+    If memoPath = "" Then
+        message = "同じ階層に「エンティティ定義書作成メモ.xlsx」が見つかりません。"
+        Exit Function
+    End If
+
+    Set gMemoMap = CreateObject("Scripting.Dictionary")
+    Set memoWb = Nothing
+    Set memoWs = Nothing
+
+    On Error Resume Next
+    Set memoWb = gExcel.Workbooks.Open(memoPath, 0, True)
+    If Err.Number <> 0 Or memoWb Is Nothing Then
+        message = "メモファイルを開けません: " & memoPath & " / " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    Set memoWs = memoWb.Worksheets("作成対象一覧")
+    If Err.Number <> 0 Or memoWs Is Nothing Then
+        message = "メモファイルのシート「作成対象一覧」が見つかりません。"
+        Err.Clear
+        On Error GoTo 0
+        CloseWorkbookSafe memoWb, False
+        Exit Function
+    End If
+
+    memoArr = memoWs.Range("D3:F105").Value2
+    On Error GoTo 0
+
+    For rowNo = 1 To UBound(memoArr, 1)
+        valueText = Trim(CStr(Nz(memoArr(rowNo, 1))))
+        keyText = LCase(Trim(CStr(Nz(memoArr(rowNo, 3)))))
+        If keyText <> "" And Not gMemoMap.Exists(keyText) Then
+            gMemoMap.Add keyText, valueText
+        End If
+    Next
+
+    CloseWorkbookSafe memoWb, False
+    LoadMemoMap = True
+End Function
+
 Function SaveWorkbookAs(wb, outputPath, ByRef errMsg)
     SaveWorkbookAs = False
     errMsg = ""
@@ -847,7 +916,31 @@ Sub Cleanup()
     End If
 
     Set gFso = Nothing
+    Set gMemoMap = Nothing
     On Error GoTo 0
+End Sub
+
+Sub ApplyMemoMapping(wsField, rowCount)
+    Dim rowNo, keyText, mappedText
+    Dim lastRow
+
+    wsField.Range("AG5").Value = "ServiceCRMフィールド名"
+    If rowCount <= 0 Then Exit Sub
+
+    lastRow = 6 + rowCount
+
+    For rowNo = 7 To lastRow
+        keyText = LCase(Trim(CStr(Nz(wsField.Cells(rowNo, 21).Value2))))
+
+        If keyText <> "" Then
+            If Not gMemoMap Is Nothing And gMemoMap.Exists(keyText) Then
+                mappedText = gMemoMap(keyText)
+                wsField.Cells(rowNo, 33).Value = mappedText
+            Else
+                wsField.Range(wsField.Cells(rowNo, 2), wsField.Cells(rowNo, 34)).Interior.Color = COLOR_GRAY
+            End If
+        End If
+    Next
 End Sub
 
 Sub AppendDetail(ByRef detail, ByVal message)
