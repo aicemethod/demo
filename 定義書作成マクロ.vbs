@@ -154,7 +154,7 @@ Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
 
     FillTableSheet wsTable, values1, fieldInfo
     FillFieldSheet wsField, fieldInfo
-    wsCover.Range("B7").Value = "エンティティ定義書_ID_" & displayName & "_v0.1"
+    wsCover.Range("B7").Value = "エンティティ定義書_ID_" & displayName & "_v0.2"
 
     outputPath = gFso.BuildPath(outputFolderPath, SanitizeFileName("エンティティ定義書_ID_" & displayName & "_v0.2.xlsx"))
     If SaveWorkbookAs(outWb, outputPath, errMsg) Then
