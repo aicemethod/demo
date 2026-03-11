@@ -1,868 +1,848 @@
 Option Explicit
 
-'────────────────────────────────────────
-'  処理：ドラッグ&ドロップでフォルダを受け取り、
-'  フォルダ内のExcelファイルからDisplayNameを取得し、
-'  template.xlsxをベースに出力ファイルを作成
-'  ※高速化ポイント
-'    ・template.xlsx は最初に1回だけ開き、以降は Worksheets.Copy で複製
-'    ・シート2（フィールド）の読み取りは配列で一括取得してから参照
-'    ・シート「フィールド」への書き込みも配列で一括書き込み
-'────────────────────────────────────────
+Const xlUp = -4162
+Const xlToLeft = -4159
+Const xlCalculationManual = -4135
+Const xlCalculationAutomatic = -4105
+Const xlOpenXMLWorkbook = 51
+Const COLOR_BLACK = 0
 
-Dim fso, excel, wb, ws, wbTemplateMaster, wbOutput, wsTable, wsCover, wsField
-Dim folderPath, folder, file
-Dim fileName, filePath, fileExt
-Dim templatePath, outputFolderPath, outputFilePath
-Dim displayName
-Dim lastCol, col, colName
-Dim outputFileName
-Dim mappingDict, colIndexDict
-Dim fieldName, cellAddr, fieldValue
-Dim rowNum, colNum
-Dim convertedValue, lowerVal
-Dim primaryNameAttribute, ws2, colIndexDict2
-Dim logicalNameCol, lastRow2, row, foundRow
-Dim attributeMappingDict, attrFieldName, attrCellAddr, attrValue
-Dim rowLogicalName, pluralDisplayName
-Dim maxLengthPos, maxLengthValue, afterMaxLength, i, char
-Dim e13Value
-Dim fieldMappingDict, outputRow, fieldValue2, outputCol
-Dim additionalDataValue, targetsValue, formatValue, targetsPos, formatPos
-Dim lowerFormatValue, attributeTypeValue
-Dim attrTypeConverted, minValue, maxValue, optionsValue, defaultValue, targetValue, statesValue
-Dim precisionPos
-Dim formatLabelJP, lastOutputRow
-Dim dataArr
-Dim outArr, outRows, outCols, startRowField, startColField, arrRow, arrCol
+Dim gFso
+Dim gExcel
+Dim gTemplateWb
 
-' ▼ 引数チェック（ドラッグ&ドロップされたフォルダのパス）
-If WScript.Arguments.Count = 0 Then
-    MsgBox "フォルダをドラッグ&ドロップしてください。", vbCritical, "エラー"
-    WScript.Quit
-End If
+Main
 
-folderPath = WScript.Arguments(0)
+Sub Main()
+    Dim folderPath, templatePath, outputFolderPath
+    Dim files, message
 
-' ▼ FileSystemObject作成
-Set fso = CreateObject("Scripting.FileSystemObject")
+    Set gFso = CreateObject("Scripting.FileSystemObject")
 
-' ▼ フォルダの存在チェック
-If Not fso.FolderExists(folderPath) Then
-    MsgBox "指定されたパスはフォルダではありません: " & folderPath, vbCritical, "エラー"
-    WScript.Quit
-End If
-
-Set folder = fso.GetFolder(folderPath)
-
-' ▼ template.xlsxのパスを取得（同じ階層）
-templatePath = fso.BuildPath(fso.GetParentFolderName(folderPath), "template.xlsx")
-
-' ▼ template.xlsxの存在チェック
-If Not fso.FileExists(templatePath) Then
-    MsgBox "template.xlsxが見つかりません: " & templatePath, vbCritical, "エラー"
-    WScript.Quit
-End If
-
-' ▼ 出力フォルダのパスを取得（同じ階層の「20_作成済定義書」）
-outputFolderPath = fso.BuildPath(fso.GetParentFolderName(folderPath), "20_作成済定義書")
-
-' ▼ 出力フォルダが存在しない場合は作成
-If Not fso.FolderExists(outputFolderPath) Then
-    fso.CreateFolder outputFolderPath
-End If
-
-' ▼ 共通マッピング（ループの外で一度だけ作成）
-Set mappingDict = CreateObject("Scripting.Dictionary")
-mappingDict.Add "Schema Name", "E9"
-mappingDict.Add "Logical Name", "E10"
-mappingDict.Add "Ownership Type", "E12"
-mappingDict.Add "Change TrackingEnabled", "E23"
-mappingDict.Add "Description", "E7"
-mappingDict.Add "DisplayCollectionName", "E6"
-mappingDict.Add "EntityColor", "E14"
-mappingDict.Add "EntityHelpUrl", "E25"
-mappingDict.Add "EntityHelpUrlEnabled", "E24"
-mappingDict.Add "HasEmailAddresses", "E35"
-mappingDict.Add "HasFeedback", "E37"
-mappingDict.Add "HasNotes", "E8"
-mappingDict.Add "IsActivity", "E30"
-mappingDict.Add "IsAuditEnabled", "E26"
-mappingDict.Add "IsAvailableOffline", "E39"
-mappingDict.Add "IsConnectionsEnabled", "E34"
-mappingDict.Add "IsDocumentManagementEnabled", "E33"
-mappingDict.Add "IsDuplicateDetection Enabled", "E22"
-mappingDict.Add "IsMailMergeEnabled", "E31"
-mappingDict.Add "IsQuickCreateEnabled", "E27"
-mappingDict.Add "IsRetentionEnabled", "E28"
-mappingDict.Add "IsSLAEnabled", "E32"
-mappingDict.Add "IsValidForAdvancedFind", "E38"
-mappingDict.Add "IsValidForQueue", "E40"
-mappingDict.Add "PrimarylmageAttribute", "E15"
-mappingDict.Add "TableType", "E11"
-
-' フィールドマッピング辞書を作成（フィールド名 → 列番号）
-Set fieldMappingDict = CreateObject("Scripting.Dictionary")
-fieldMappingDict.Add "Schema Name", 4    ' D列
-fieldMappingDict.Add "Display Name", 5   ' E列
-fieldMappingDict.Add "Custom Attribute", 7 ' G列
-fieldMappingDict.Add "Attribute Type", 10  ' J列（後で個別処理）
-fieldMappingDict.Add "Type", 11            ' K列
-fieldMappingDict.Add "Required Level", 12  ' L列
-fieldMappingDict.Add "Description", 31     ' AE列
-fieldMappingDict.Add "Audit Enabled", 24   ' X列
-fieldMappingDict.Add "Secured", 25         ' Y列
-fieldMappingDict.Add "ValidFor AdvancedFind", 28 ' AB列
-
-' ▼ Excel起動
-Set excel = CreateObject("Excel.Application")
-excel.Visible = False
-excel.DisplayAlerts = False
-' 高速化設定
-excel.ScreenUpdating = False
-excel.EnableEvents = False
-' Calculation変更は環境によってエラーになるのでエラー無視で実行
-On Error Resume Next
-excel.Calculation = -4135   ' xlCalculationManual
-On Error GoTo 0
-
-' ▼ template.xlsx をマスタとして一度だけ開く（読み取り専用）
-On Error Resume Next
-Set wbTemplateMaster = excel.Workbooks.Open(templatePath, 0, True)
-If Err.Number <> 0 Or wbTemplateMaster Is Nothing Then
-    MsgBox "template.xlsxを開けませんでした: " & Err.Description, vbCritical, "エラー"
-    Err.Clear
-    On Error GoTo 0
-    excel.Quit
-    Set excel = Nothing
-    WScript.Quit
-End If
-On Error GoTo 0
-
-' ▼ フォルダ内のExcelファイルを順に処理
-For Each file In folder.Files
-    fileName = file.Name
-    fileExt = LCase(fso.GetExtensionName(fileName))
-    
-    ' Excelファイルの拡張子をチェック
-    If fileExt = "xlsx" Or fileExt = "xls" Or fileExt = "xlsm" Or fileExt = "xlsb" Then
-        filePath = file.Path
-        
-        ' 前のループで作成されたオブジェクトを解放（メモリリーク防止）
-        On Error Resume Next
-        If Not colIndexDict Is Nothing Then
-            Set colIndexDict = Nothing
-        End If
-        On Error GoTo 0
-        dataArr = Array() ' 配列のメモリ解放
-        
-        On Error Resume Next
-        ' Excelファイルを開く（読み取り専用）
-        Set wb = excel.Workbooks.Open(filePath, 0, True)
-        
-        If Err.Number = 0 Then
-            On Error GoTo 0
-            
-            ' 1シート目を取得
-            Set ws = wb.Sheets(1)
-            
-            ' 3行目（ヘッダー行）から列インデックスを作成
-            Set colIndexDict = CreateObject("Scripting.Dictionary")
-            lastCol = ws.Cells(3, ws.Columns.Count).End(-4159).Column ' xlToLeft
-            
-            For col = 1 To lastCol
-                colName = Trim(CStr(ws.Cells(3, col).Value2))
-                If colName <> "" Then
-                    colIndexDict(LCase(colName)) = col
-                End If
-            Next
-            
-            ' DisplayNameを取得（ファイル名生成用）
-            displayName = ""
-            If colIndexDict.Exists("displayname") Then
-                On Error Resume Next
-                displayName = CStr(ws.Cells(4, colIndexDict("displayname")).Value2)
-                If Err.Number <> 0 Then
-                    displayName = ""
-                    Err.Clear
-                End If
-                On Error GoTo 0
-            End If
-            
-            ' DisplayNameが見つかった場合のみ処理
-            If displayName <> "" Then
-                ' ▼ マスタ template から新しいブックをコピーして出力用ブックを作成
-                On Error Resume Next
-                wbTemplateMaster.Worksheets.Copy  ' 全シートを含む新規ブックが作成される
-                If Err.Number = 0 Then
-                    On Error GoTo 0
-                    
-                    Set wbOutput = excel.ActiveWorkbook
-                    
-                    ' シート「テーブル」「表紙」「フィールド」を取得
-                    On Error Resume Next
-                    Set wsTable = wbOutput.Sheets("テーブル")
-                    Set wsCover = wbOutput.Sheets("表紙")
-                    Set wsField = wbOutput.Sheets("フィールド")
-                    
-                    If Err.Number = 0 Then
-                        On Error GoTo 0
-                        
-                        ' マッピングに従って値をセット（テーブルシート）
-                        For Each fieldName In mappingDict.Keys
-                            cellAddr = mappingDict(fieldName)
-                            fieldValue = ""
-                            
-                            ' 列インデックスから値を取得
-                            If colIndexDict.Exists(LCase(fieldName)) Then
-                                On Error Resume Next
-                                fieldValue = ws.Cells(4, colIndexDict(LCase(fieldName))).Value2
-                                If Err.Number <> 0 Then
-                                    fieldValue = ""
-                                    Err.Clear
-                                End If
-                                On Error GoTo 0
-                            End If
-                            
-                            ' True/Falseを変換（True → ✓、False → -）
-                            convertedValue = fieldValue
-                            If IsNumeric(fieldValue) = False Then
-                                lowerVal = LCase(Trim(CStr(fieldValue)))
-                                If lowerVal = "true" Then
-                                    convertedValue = ChrW(10003) ' ✓
-                                ElseIf lowerVal = "false" Or lowerVal = "" Then
-                                    convertedValue = "-"
-                                End If
-                            End If
-                            
-                            ' セルアドレスを解析（例：E5 → 行5、列5）
-                            colNum = Asc(UCase(Left(cellAddr, 1))) - 64 ' A=1, B=2, ..., E=5
-                            rowNum = CInt(Mid(cellAddr, 2))
-                            
-                            ' 値をセット（赤文字）
-                            With wsTable.Cells(rowNum, colNum)
-                                .Value = convertedValue
-                                .Font.Color = RGB(255, 0, 0)
-                            End With
-                        Next
-                        
-                        ' ▼ Plural Display Nameの値をE5にセット
-                        pluralDisplayName = ""
-                        If colIndexDict.Exists("plural display name") Then
-                            On Error Resume Next
-                            pluralDisplayName = ws.Cells(4, colIndexDict("plural display name")).Value2
-                            If Err.Number <> 0 Then
-                                pluralDisplayName = ""
-                                Err.Clear
-                            End If
-                            On Error GoTo 0
-                        End If
-                        
-                        If pluralDisplayName <> "" Then
-                            With wsTable.Cells(5, 5)
-                                .Value = pluralDisplayName
-                                .Font.Color = RGB(255, 0, 0)
-                            End With
-                        End If
-                        
-                        ' ▼ E13の値をチェック（空の場合は「なし」をセット）
-                        e13Value = wsTable.Cells(13, 5).Value
-                        If e13Value = "" Or IsEmpty(e13Value) Then
-                            With wsTable.Cells(13, 5)
-                                .Value = "なし"
-                                .Font.Color = RGB(255, 0, 0)
-                            End With
-                        End If
-                        
-                        ' ▼ PrimaryNameAttributeの値を取得（シート1の4行目から）
-                        primaryNameAttribute = ""
-                        If colIndexDict.Exists("primarynameattribute") Then
-                            On Error Resume Next
-                            primaryNameAttribute = CStr(ws.Cells(4, colIndexDict("primarynameattribute")).Value2)
-                            If Err.Number <> 0 Then
-                                primaryNameAttribute = ""
-                                Err.Clear
-                            End If
-                            On Error GoTo 0
-                        End If
-                        
-                        ' ▼ シート2（フィールド元データ）を一括読み込み
-                        If wb.Sheets.Count >= 2 Then
-                            Set ws2 = wb.Sheets(2)
-                            
-                            ' シート2の1行目（ヘッダー行）から列インデックスを作成
-                            Set colIndexDict2 = CreateObject("Scripting.Dictionary")
-                            lastCol = ws2.Cells(1, ws2.Columns.Count).End(-4159).Column ' xlToLeft
-                            
-                            For col = 1 To lastCol
-                                colName = Trim(CStr(ws2.Cells(1, col).Value2))
-                                If colName <> "" Then
-                                    colIndexDict2(LCase(colName)) = col
-                                End If
-                            Next
-                            
-                            ' シート2の最終行を取得
-                            lastRow2 = ws2.Cells(ws2.Rows.Count, 1).End(-4162).Row ' xlUp
-                            
-                            ' 1行目～最終行を一括で配列に読み込む（読み取り高速化）
-                            If lastRow2 >= 1 And lastCol >= 1 Then
-                                dataArr = ws2.Range(ws2.Cells(1, 1), ws2.Cells(lastRow2, lastCol)).Value
-                            Else
-                                dataArr = Array()
-                            End If
-                            
-                            ' ▼ PrimaryNameAttributeからテーブルシートに値をセット
-                            If primaryNameAttribute <> "" Then
-                                ' Logical Name列の位置を取得
-                                logicalNameCol = 0
-                                If colIndexDict2.Exists("logical name") Then
-                                    logicalNameCol = colIndexDict2("logical name")
-                                End If
-                                
-                                ' PrimaryNameAttributeと一致する行を検索（配列から検索）
-                                foundRow = 0
-                                If logicalNameCol > 0 And lastRow2 >= 2 Then
-                                    For row = 2 To lastRow2
-                                        On Error Resume Next
-                                        rowLogicalName = Trim(CStr(dataArr(row, logicalNameCol)))
-                                        If Err.Number <> 0 Then
-                                            rowLogicalName = ""
-                                            Err.Clear
-                                        End If
-                                        On Error GoTo 0
-                                        
-                                        If LCase(rowLogicalName) = LCase(primaryNameAttribute) Then
-                                            foundRow = row
-                                            Exit For
-                                        End If
-                                    Next
-                                End If
-                                
-                                ' 該当行が見つかった場合、値をセット
-                                If foundRow > 0 Then
-                                    ' 属性マッピング辞書を作成
-                                    Set attributeMappingDict = CreateObject("Scripting.Dictionary")
-                                    attributeMappingDict.Add "Display Name", "E16"
-                                    attributeMappingDict.Add "Description", "E17"
-                                    attributeMappingDict.Add "Schema Name", "E18"
-                                    attributeMappingDict.Add "Logical Name", "E19"
-                                    attributeMappingDict.Add "Required Level", "E20"
-                                    attributeMappingDict.Add "Additional data", "E21"
-                                    
-                                    ' 各属性の値を取得してセット
-                                    For Each attrFieldName In attributeMappingDict.Keys
-                                        attrCellAddr = attributeMappingDict(attrFieldName)
-                                        attrValue = ""
-                                        
-                                        ' 列インデックスから値を取得（配列から）
-                                        If colIndexDict2.Exists(LCase(attrFieldName)) Then
-                                            On Error Resume Next
-                                            attrValue = dataArr(foundRow, colIndexDict2(LCase(attrFieldName)))
-                                            If Err.Number <> 0 Then
-                                                attrValue = ""
-                                                Err.Clear
-                                            End If
-                                            On Error GoTo 0
-                                        End If
-                                        
-                                        ' E21（Additional data）の場合は「Max length:」の後の数値のみを抽出
-                                        If attrCellAddr = "E21" Then
-                                            maxLengthValue = ""
-                                            maxLengthPos = InStr(1, CStr(attrValue), "Max length:", vbTextCompare)
-                                            If maxLengthPos > 0 Then
-                                                afterMaxLength = Mid(CStr(attrValue), maxLengthPos + Len("Max length:"))
-                                                ' 数値部分を抽出
-                                                For i = 1 To Len(afterMaxLength)
-                                                    char = Mid(afterMaxLength, i, 1)
-                                                    If IsNumeric(char) Then
-                                                        maxLengthValue = maxLengthValue & char
-                                                    ElseIf maxLengthValue <> "" Then
-                                                        Exit For
-                                                    End If
-                                                Next
-                                            End If
-                                            convertedValue = maxLengthValue
-                                        Else
-                                            ' True/Falseを変換
-                                            convertedValue = attrValue
-                                            If IsNumeric(attrValue) = False Then
-                                                lowerVal = LCase(Trim(CStr(attrValue)))
-                                                If lowerVal = "true" Then
-                                                    convertedValue = ChrW(10003) ' ✓
-                                                ElseIf lowerVal = "false" Or lowerVal = "" Then
-                                                    convertedValue = "-"
-                                                End If
-                                            End If
-                                        End If
-                                        
-                                        ' セルアドレスを解析
-                                        colNum = Asc(UCase(Left(attrCellAddr, 1))) - 64
-                                        rowNum = CInt(Mid(attrCellAddr, 2))
-                                        
-                                        ' 値をセット（赤文字）
-                                        With wsTable.Cells(rowNum, colNum)
-                                            .Value = convertedValue
-                                            .Font.Color = RGB(255, 0, 0)
-                                        End With
-                                    Next
-                                    
-                                    Set attributeMappingDict = Nothing
-                                End If
-                            End If
-                            
-                            ' ▼ シート2の2行目以降のデータをシート「フィールド」に出力（配列一括書き込み）
-                            If lastRow2 >= 2 Then
-                                startRowField = 7        ' 出力開始行
-                                startColField = 4        ' D列
-                                outRows = lastRow2 - 1   ' データ行数（2行目〜）
-                                outCols = 37 - startColField + 1 ' D〜AK列
-                                
-                                ' VBScriptの配列は0ベース。Excelに書き込む際は1ベースとして解釈されるため、
-                                ' インデックス1からoutRows、1からoutColsまで使うためにサイズをoutRows、outColsにする
-                                ReDim outArr(outRows, outCols)
-                                
-                                arrRow = 0  ' 0ベースで開始（Excelに書き込む際は1ベースとして解釈される）
-                                
-                                For row = 2 To lastRow2
-                                    ' 各フィールドの値を取得して outArr にセット（共通処理）
-                                    For Each fieldName In fieldMappingDict.Keys
-                                        outputCol = fieldMappingDict(fieldName)
-                                        
-                                        ' Attribute Type はここでは書き込まず、後続の専用処理で書く
-                                        If fieldName <> "Attribute Type" Then
-                                            fieldValue2 = ""
-                                            
-                                            ' 列インデックスから値を取得（配列から）
-                                            If colIndexDict2.Exists(LCase(fieldName)) Then
-                                                On Error Resume Next
-                                                fieldValue2 = dataArr(row, colIndexDict2(LCase(fieldName)))
-                                                If Err.Number <> 0 Then
-                                                    fieldValue2 = ""
-                                                    Err.Clear
-                                                End If
-                                                On Error GoTo 0
-                                            End If
-                                            
-                                            ' フィールドごとの変換処理（空の値は空のまま）
-                                            convertedValue = fieldValue2
-                                            
-                                            ' 空の値の場合は変換せずに空のまま
-                                            If fieldValue2 = "" Or IsEmpty(fieldValue2) Then
-                                                convertedValue = ""
-                                            ElseIf IsNumeric(fieldValue2) = False Then
-                                                lowerVal = LCase(Trim(CStr(fieldValue2)))
-                                                
-                                                ' Custom Attributeの変換（True → カスタム、False → 標準）
-                                                If fieldName = "Custom Attribute" Then
-                                                    If lowerVal = "true" Then
-                                                        convertedValue = "カスタム"
-                                                    ElseIf lowerVal = "false" Then
-                                                        convertedValue = "標準"
-                                                    End If
-                                                ' Typeの変換（Simple → シンプル、Calculated → 計算、Rollup → ロールアップ）
-                                                ElseIf fieldName = "Type" Then
-                                                    Select Case lowerVal
-                                                        Case "simple"
-                                                            convertedValue = "シンプル"
-                                                        Case "calculated"
-                                                            convertedValue = "計算"
-                                                        Case "rollup"
-                                                            convertedValue = "ロールアップ"
-                                                        Case Else
-                                                            convertedValue = fieldValue2
-                                                    End Select
-                                                ' Required Levelの変換
-                                                ElseIf fieldName = "Required Level" Then
-                                                    Select Case lowerVal
-                                                        Case "none"
-                                                            convertedValue = "任意"
-                                                        Case "applicationrequired"
-                                                            convertedValue = "システム要求"
-                                                        Case "systemrequired"
-                                                            convertedValue = "必須項目"
-                                                        Case "recommended"
-                                                            convertedValue = "推奨項目"
-                                                        Case Else
-                                                            convertedValue = fieldValue2
-                                                    End Select
-                                                ' その他のTrue/FalseはTRUE/FALSEに変換
-                                                Else
-                                                    If lowerVal = "true" Then
-                                                        convertedValue = "TRUE"
-                                                    ElseIf lowerVal = "false" Then
-                                                        convertedValue = "FALSE"
-                                                    End If
-                                                End If
-                                            End If
-                                            
-                                            ' outArr にセット（0ベースのインデックス）
-                                            arrCol = outputCol - startColField
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = convertedValue
-                                            End If
-                                        End If
-                                    Next
-                                    
-                                    ' ▼ Additional data の取得（Precision: 以降は削除）
-                                    additionalDataValue = ""
-                                    If colIndexDict2.Exists("additional data") Then
-                                        On Error Resume Next
-                                        additionalDataValue = CStr(dataArr(row, colIndexDict2("additional data")))
-                                        If Err.Number <> 0 Then
-                                            additionalDataValue = ""
-                                            Err.Clear
-                                        End If
-                                        On Error GoTo 0
-                                        
-                                        ' Precision: 以降を削除
-                                        precisionPos = InStr(1, additionalDataValue, "Precision:", vbTextCompare)
-                                        If precisionPos > 0 Then
-                                            additionalDataValue = Left(additionalDataValue, precisionPos - 1)
-                                        End If
-                                    End If
-                                    
-                                    ' ▼ targets: の処理（V列 = 22列目）
-                                    targetsValue = ""
-                                    If additionalDataValue <> "" Then
-                                        targetsPos = InStr(1, additionalDataValue, "targets:", vbTextCompare)
-                                        If targetsPos > 0 Then
-                                            targetsValue = Mid(additionalDataValue, targetsPos + Len("targets:"))
-                                            ' 改行やスペースを取り除く
-                                            targetsValue = Replace(targetsValue, vbCrLf, "")
-                                            targetsValue = Replace(targetsValue, vbLf, "")
-                                            targetsValue = Replace(targetsValue, vbCr, "")
-                                            targetsValue = Replace(targetsValue, " ", "")
-                                            targetsValue = Trim(targetsValue)
-                                            
-                                            arrCol = 22 - startColField ' V列（0ベース）
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = targetsValue
-                                            End If
-                                        End If
-                                    End If
-                                    
-                                    ' ▼ Format: の処理（DateTime/DateOnly 判定用）
-                                    formatValue = ""
-                                    formatLabelJP = ""
-                                    
-                                    If additionalDataValue <> "" Then
-                                        formatPos = InStr(1, additionalDataValue, "Format:", vbTextCompare)
-                                        If formatPos > 0 Then
-                                            formatValue = Mid(additionalDataValue, formatPos + Len("Format:"))
-                                            ' 改行や余計な空白を取り除く
-                                            formatValue = Replace(formatValue, vbCrLf, "")
-                                            formatValue = Replace(formatValue, vbLf, "")
-                                            formatValue = Replace(formatValue, vbCr, "")
-                                            formatValue = Trim(formatValue)
-                                            
-                                            lowerFormatValue = LCase(formatValue)
-                                            ' DateAndTime / DateTime → 日時
-                                            If InStr(lowerFormatValue, "dateandtime") > 0 Or InStr(lowerFormatValue, "datetime") > 0 Then
-                                                formatLabelJP = "日付と時刻 - 日時"
-                                            ' DateOnly → 日付のみ
-                                            ElseIf InStr(lowerFormatValue, "dateonly") > 0 Then
-                                                formatLabelJP = "日付と時刻 - 日付のみ"
-                                            Else
-                                                ' その他はそのまま保持
-                                                formatLabelJP = formatValue
-                                            End If
-                                        End If
-                                    End If
-                                    
-                                    ' ▼ Attribute Type の変換と Additional data の反映
-                                    attrTypeConverted = ""
-                                    minValue = ""
-                                    maxValue = ""
-                                    optionsValue = ""
-                                    defaultValue = ""
-                                    targetValue = ""
-                                    statesValue = ""
-                                    
-                                    If colIndexDict2.Exists("attribute type") Then
-                                        On Error Resume Next
-                                        attributeTypeValue = CStr(dataArr(row, colIndexDict2("attribute type")))
-                                        If Err.Number <> 0 Then
-                                            attributeTypeValue = ""
-                                            Err.Clear
-                                        End If
-                                        On Error GoTo 0
-                                        
-                                        attributeTypeValue = Trim(CStr(attributeTypeValue))
-                                        attributeTypeValue = Replace(attributeTypeValue, vbCrLf, "")
-                                        attributeTypeValue = Replace(attributeTypeValue, vbLf, "")
-                                        attributeTypeValue = Replace(attributeTypeValue, vbCr, "")
-                                        
-                                        lowerVal = LCase(Trim(attributeTypeValue))
-                                        
-                                        Select Case lowerVal
-                                            Case "bigint"
-                                                attrTypeConverted = "数値 - 整数(Int)"
-                                                minValue = ExtractValueFromAdditionalData(additionalDataValue, "Minimum value:")
-                                                maxValue = ExtractValueFromAdditionalData(additionalDataValue, "Maximum value:")
-                                            Case "choice"
-                                                attrTypeConverted = "選択肢"
-                                                optionsValue = ExtractValueFromAdditionalData(additionalDataValue, "Options:")
-                                                defaultValue = ExtractValueFromAdditionalData(additionalDataValue, "Default:")
-                                                If LCase(Trim(defaultValue)) = "n/a" Then
-                                                    defaultValue = "なし"
-                                                End If
-                                            Case "choices"
-                                                attrTypeConverted = "選択肢(複数)"
-                                                optionsValue = ExtractValueFromAdditionalData(additionalDataValue, "Options:")
-                                                defaultValue = ExtractValueFromAdditionalData(additionalDataValue, "Default:")
-                                                If LCase(Trim(defaultValue)) = "n/a" Then
-                                                    defaultValue = "なし"
-                                                End If
-                                            Case "currency"
-                                                attrTypeConverted = "通貨"
-                                                minValue = ExtractValueFromAdditionalData(additionalDataValue, "Minimum value:")
-                                                maxValue = ExtractValueFromAdditionalData(additionalDataValue, "Maximum value:")
-                                            Case "decimal"
-                                                attrTypeConverted = "数値 - 少数(10進数)"
-                                                minValue = ExtractValueFromAdditionalData(additionalDataValue, "Minimum value:")
-                                                maxValue = ExtractValueFromAdditionalData(additionalDataValue, "Maximum value:")
-                                            Case "double"
-                                                attrTypeConverted = "数値 - 浮動小数点数"
-                                                minValue = ExtractValueFromAdditionalData(additionalDataValue, "Minimum value:")
-                                                maxValue = ExtractValueFromAdditionalData(additionalDataValue, "Maximum value:")
-                                            Case "multiline text"
-                                                attrTypeConverted = "複数行テキスト - プレーン"
-                                            Case "owner"
-                                                attrTypeConverted = "所有者"
-                                                targetValue = ExtractValueFromAdditionalData(additionalDataValue, "Target:")
-                                            Case "state"
-                                                attrTypeConverted = "状態"
-                                                statesValue = ExtractValueFromAdditionalData(additionalDataValue, "States:")
-                                            Case "status"
-                                                attrTypeConverted = "ステータス"
-                                                statesValue = ExtractValueFromAdditionalData(additionalDataValue, "States:")
-                                            Case "text"
-                                                attrTypeConverted = "1行テキスト - プレーン"
-                                            Case "two options"
-                                                attrTypeConverted = "はい/いいえ"
-                                                optionsValue = ExtractValueFromAdditionalData(additionalDataValue, "Options:")
-                                                defaultValue = ExtractValueFromAdditionalData(additionalDataValue, "Default Value:")
-                                            Case "uniqueidentifier"
-                                                attrTypeConverted = "一意識別子"
-                                            Case "whole number"
-                                                attrTypeConverted = "数値 - 整数(Int)"
-                                                minValue = ExtractValueFromAdditionalData(additionalDataValue, "Minimum value:")
-                                                maxValue = ExtractValueFromAdditionalData(additionalDataValue, "Maximum value:")
-                                            Case "datetime", "dateandtime"
-                                                ' 日付時刻型は Format: の情報を優先
-                                                If formatLabelJP <> "" Then
-                                                    attrTypeConverted = formatLabelJP
-                                                Else
-                                                    attrTypeConverted = "日付と時刻"
-                                                End If
-                                            Case Else
-                                                ' Lookupの場合は検索に変換
-                                                If lowerVal = "lookup" Then
-                                                    attrTypeConverted = "検索"
-                                                Else
-                                                    attrTypeConverted = attributeTypeValue
-                                                End If
-                                        End Select
-                                        
-                                        ' Attribute Type を J列（10列目）にセット
-                                        If attrTypeConverted <> "" Then
-                                            arrCol = 10 - startColField
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = attrTypeConverted
-                                            End If
-                                        End If
-                                        
-                                        ' Additional data 由来の各種値をセット
-                                        ' Minimum value → P列（16列目）
-                                        If minValue <> "" Then
-                                            arrCol = 16 - startColField
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = minValue
-                                            End If
-                                        End If
-                                        
-                                        ' Maximum value → O列（15列目）
-                                        If maxValue <> "" Then
-                                            arrCol = 15 - startColField
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = maxValue
-                                            End If
-                                        End If
-                                        
-                                        ' Options: → T列（20列目）
-                                        If optionsValue <> "" Then
-                                            arrCol = 20 - startColField
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = optionsValue
-                                            End If
-                                        End If
-                                        
-                                        ' Default: / Default Value: → U列（21列目）
-                                        If defaultValue <> "" Then
-                                            arrCol = 21 - startColField
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = defaultValue
-                                            End If
-                                        End If
-                                        
-                                        ' Target: → V列（22列目）
-                                        If targetValue <> "" Then
-                                            arrCol = 22 - startColField
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = targetValue
-                                            End If
-                                        End If
-                                        
-                                        ' States: → T列（20列目）
-                                        If statesValue <> "" Then
-                                            arrCol = 20 - startColField
-                                            If arrCol >= 0 And arrCol < outCols Then
-                                                outArr(arrRow, arrCol) = statesValue
-                                            End If
-                                        End If
-                                        
-                                        ' Multiline Text/Text の場合は Additional data 全体を AK列（37列目）にセット
-                                        If lowerVal = "multiline text" Or lowerVal = "text" Then
-                                            If additionalDataValue <> "" Then
-                                                arrCol = 37 - startColField
-                                                If arrCol >= 0 And arrCol < outCols Then
-                                                    outArr(arrRow, arrCol) = additionalDataValue
-                                                End If
-                                            End If
-                                        End If
-                                    End If
-                                    
-                                    arrRow = arrRow + 1
-                                Next
-                                
-                                ' ★フィールドシートの出力範囲を一括で書き込み＆赤文字にする
-                                ' ExcelのRangeに配列を書き込む際、配列のインデックス0が1行目として解釈される
-                                With wsField
-                                    .Range(.Cells(startRowField, startColField), .Cells(startRowField + outRows - 1, startColField + outCols - 1)).Value = outArr
-                                    .Range(.Cells(startRowField, startColField), .Cells(startRowField + outRows - 1, startColField + outCols - 1)).Font.Color = RGB(255, 0, 0)
-                                End With
-                            End If
-                            
-                            Set colIndexDict2 = Nothing
-                            Set ws2 = Nothing
-                            dataArr = Array()
-                        End If
-                        
-                        ' シート「表紙」のB7に「エンティティ定義書_ID_<DisplayNameの値>_v0.1」をセット
-                        wsCover.Cells(7, 2).Value = "エンティティ定義書_ID_" & displayName & "_v0.1"
-                        
-                        ' 出力ファイル名を生成
-                        outputFileName = "エンティティ定義書_ID_" & displayName & "_v0.1.xlsx"
-                        outputFilePath = fso.BuildPath(outputFolderPath, outputFileName)
-                        
-                        ' 既存ファイルがある場合は削除
-                        If fso.FileExists(outputFilePath) Then
-                            fso.DeleteFile outputFilePath, True
-                        End If
-                        
-                        ' ファイルを保存
-                        wbOutput.SaveAs outputFilePath
-                        
-                        ' 出力ブックを閉じる
-                        wbOutput.Close False
-                        Set wbOutput = Nothing
-                        Set wsTable = Nothing
-                        Set wsCover = Nothing
-                        Set wsField = Nothing
-                    Else
-                        MsgBox "シート「テーブル」または「表紙」または「フィールド」が見つかりません: " & fileName, vbCritical, "エラー"
-                        Err.Clear
-                        On Error GoTo 0
-                        If Not wbOutput Is Nothing Then
-                            wbOutput.Close False
-                            Set wbOutput = Nothing
-                        End If
-                    End If
-                Else
-                    MsgBox "templateコピー時にエラーが発生しました: " & Err.Description, vbCritical, "エラー"
-                    Err.Clear
-                    On Error GoTo 0
-                End If
-            Else
-                MsgBox "DisplayNameが見つかりませんでした: " & fileName, vbWarning, "警告"
-            End If
-            
-            ' 元のファイルを閉じる
-            wb.Close False
-            Set wb = Nothing
-            Set ws = Nothing
-        Else
-            MsgBox "ファイルを開けませんでした: " & fileName & vbCrLf & "エラー: " & Err.Description, vbCritical, "エラー"
-            Err.Clear
-            On Error GoTo 0
-        End If
-        
-        ' 各ファイル処理後にcolIndexDictを解放（メモリリーク防止）
-        If Not colIndexDict Is Nothing Then
-            Set colIndexDict = Nothing
-        End If
+    If WScript.Arguments.Count = 0 Then
+        MsgBox "フォルダをこのVBSにドラッグしてください。", vbExclamation, "確認"
+        Exit Sub
     End If
-Next
 
-' ▼ マスタ template.xlsx を閉じる
-If Not wbTemplateMaster Is Nothing Then
-    wbTemplateMaster.Close False
-    Set wbTemplateMaster = Nothing
-End If
+    folderPath = WScript.Arguments(0)
+    If Not gFso.FolderExists(folderPath) Then
+        MsgBox "指定されたパスはフォルダではありません。" & vbCrLf & folderPath, vbCritical, "エラー"
+        Exit Sub
+    End If
 
-' ▼ Excel終了（設定を戻してから Quit）
-On Error Resume Next
-excel.Calculation = -4105   ' xlCalculationAutomatic（失敗しても無視）
-excel.ScreenUpdating = True
-excel.EnableEvents = True
-On Error GoTo 0
+    templatePath = FindTemplatePath(folderPath)
+    If templatePath = "" Then
+        MsgBox "同じ階層に「テンプレート.xlsx」が見つかりません。", vbCritical, "エラー"
+        Exit Sub
+    End If
 
-excel.Quit
-Set excel = Nothing
+    outputFolderPath = gFso.BuildPath(gFso.GetParentFolderName(folderPath), "20_作成済定義書")
+    EnsureFolder outputFolderPath
 
-MsgBox "処理が完了しました。", vbInformation, "完了"
+    files = CollectExcelFiles(folderPath, templatePath)
+    If IsEmpty(files) Then
+        MsgBox "処理対象のExcelファイルがありません。", vbInformation, "完了"
+        Exit Sub
+    End If
 
-'────────────────────────────────────────
-'  関数：Additional dataから値を抽出
-'────────────────────────────────────────
+    If Not StartExcel(templatePath, message) Then
+        Cleanup
+        MsgBox message, vbCritical, "エラー"
+        Exit Sub
+    End If
+
+    message = ProcessAllFiles(files, outputFolderPath)
+    Cleanup
+    MsgBox message, vbInformation, "完了"
+End Sub
+
+Function ProcessAllFiles(files, outputFolderPath)
+    Dim i, okCount, ngCount, detail
+
+    okCount = 0
+    ngCount = 0
+    detail = ""
+
+    For i = 0 To UBound(files)
+        If ProcessOneFile(CStr(files(i)), outputFolderPath, detail) Then
+            okCount = okCount + 1
+        Else
+            ngCount = ngCount + 1
+        End If
+    Next
+
+    ProcessAllFiles = "処理が完了しました。" & vbCrLf & _
+                      "成功: " & okCount & "件" & vbCrLf & _
+                      "失敗: " & ngCount & "件" & detail
+End Function
+
+Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
+    Dim srcWb, outWb
+    Dim ws1, ws2, wsTable, wsField, wsCover
+    Dim values1, fieldInfo, displayName, outputPath
+    Dim errMsg
+
+    ProcessOneFile = False
+    Set srcWb = Nothing
+    Set outWb = Nothing
+
+    On Error Resume Next
+    Set srcWb = gExcel.Workbooks.Open(filePath, 0, True)
+    If Err.Number <> 0 Then
+        errMsg = "入力ファイルを開けません: " & gFso.GetFileName(filePath) & " / " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+        AppendDetail detail, errMsg
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    If srcWb.Sheets.Count < 2 Then
+        AppendDetail detail, "シート数不足: " & gFso.GetFileName(filePath)
+        CloseWorkbookSafe srcWb, False
+        Exit Function
+    End If
+
+    Set ws1 = srcWb.Sheets(1)
+    Set ws2 = srcWb.Sheets(2)
+
+    values1 = GetSheet1Values(ws1)
+    displayName = CStr(values1(0))
+    If Trim(displayName) = "" Then
+        AppendDetail detail, "AJ4(Display Name)が空です: " & gFso.GetFileName(filePath)
+        CloseWorkbookSafe srcWb, False
+        Exit Function
+    End If
+
+    fieldInfo = ReadFieldSheet(ws2)
+    If IsEmpty(fieldInfo) Then
+        AppendDetail detail, "シート2の読み込みに失敗しました: " & gFso.GetFileName(filePath)
+        CloseWorkbookSafe srcWb, False
+        Exit Function
+    End If
+
+    On Error Resume Next
+    gTemplateWb.Worksheets.Copy
+    If Err.Number <> 0 Then
+        errMsg = "テンプレート複製に失敗しました: " & gFso.GetFileName(filePath) & " / " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+        CloseWorkbookSafe srcWb, False
+        AppendDetail detail, errMsg
+        Exit Function
+    End If
+    Set outWb = gExcel.ActiveWorkbook
+    On Error GoTo 0
+
+    Set wsTable = Nothing
+    Set wsField = Nothing
+    Set wsCover = Nothing
+    On Error Resume Next
+    Set wsTable = outWb.Worksheets("テーブル")
+    Set wsField = outWb.Worksheets("フィールド")
+    Set wsCover = outWb.Worksheets("表紙")
+    If Err.Number <> 0 Or wsTable Is Nothing Or wsField Is Nothing Or wsCover Is Nothing Then
+        errMsg = "テンプレート内の必要シートが不足しています: " & gFso.GetFileName(filePath)
+        Err.Clear
+        On Error GoTo 0
+        CloseWorkbookSafe outWb, False
+        CloseWorkbookSafe srcWb, False
+        AppendDetail detail, errMsg
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    FillTableSheet wsTable, values1, fieldInfo
+    FillFieldSheet wsField, fieldInfo
+    wsCover.Range("B7").Value = "エンティティ定義書_ID_" & displayName & "_v0.1"
+
+    outputPath = gFso.BuildPath(outputFolderPath, SanitizeFileName("エンティティ定義書_ID_" & displayName & "_v0.1.xlsx"))
+    If SaveWorkbookAs(outWb, outputPath, errMsg) Then
+        ProcessOneFile = True
+    Else
+        AppendDetail detail, errMsg
+    End If
+
+    CloseWorkbookSafe outWb, False
+    CloseWorkbookSafe srcWb, False
+End Function
+
+Function GetSheet1Values(ws)
+    Dim arr(35)
+
+    arr(0) = Nz(ws.Range("AJ4").Value2)
+    arr(1) = Nz(ws.Range("AI4").Value2)
+    arr(2) = Nz(ws.Range("AH4").Value2)
+    arr(3) = Nz(ws.Range("AW4").Value2)
+    arr(4) = ConvertPrefixName(Nz(ws.Range("D4").Value2))
+    arr(5) = ConvertPrefixName(Nz(ws.Range("E4").Value2))
+    arr(6) = Nz(ws.Range("DU4").Value2)
+    arr(7) = Nz(ws.Range("I4").Value2)
+    arr(8) = Nz(ws.Range("BA4").Value2)
+    arr(9) = Nz(ws.Range("AL4").Value2)
+    arr(10) = ConvertPrefixName(Nz(ws.Range("DK4").Value2))
+    arr(11) = ConvertPrefixName(Nz(ws.Range("DM4").Value2))
+    arr(12) = Nz(ws.Range("BQ4").Value2)
+    arr(13) = Nz(ws.Range("AA4").Value2)
+    arr(14) = Nz(ws.Range("AN4").Value2)
+    arr(15) = Nz(ws.Range("AM4").Value2)
+    arr(16) = Nz(ws.Range("BG4").Value2)
+    arr(17) = Nz(ws.Range("CH4").Value2)
+    arr(18) = Nz(ws.Range("CL4").Value2)
+    arr(19) = Nz(ws.Range("AS4").Value2)
+    arr(20) = Nz(ws.Range("BZ4").Value2)
+    arr(21) = Nz(ws.Range("BO4").Value2)
+    arr(22) = Nz(ws.Range("BL4").Value2)
+    arr(23) = Nz(ws.Range("AU4").Value2)
+    arr(24) = Nz(ws.Range("L4").Value2)
+    arr(25) = Nz(ws.Range("AV4").Value2)
+    arr(26) = Nz(ws.Range("DT4").Value2)
+    arr(27) = Nz(ws.Range("CD4").Value2)
+    arr(28) = Nz(ws.Range("CS4").Value2)
+
+    GetSheet1Values = arr
+End Function
+
+Sub FillTableSheet(wsTable, values1, fieldInfo)
+    Dim rowNo, tableArr
+    Dim dmKey, foundData
+
+    ReDim tableArr(1 To 37, 1 To 1)
+
+    tableArr(1, 1) = values1(0)
+    tableArr(2, 1) = values1(1)
+    tableArr(3, 1) = values1(2)
+    tableArr(4, 1) = ConvertBooleanForTable(values1(3))
+    tableArr(5, 1) = values1(4)
+    tableArr(6, 1) = values1(5)
+    tableArr(7, 1) = values1(6)
+    tableArr(8, 1) = values1(7)
+    tableArr(9, 1) = DefaultText(values1(8), "なし")
+    tableArr(10, 1) = values1(9)
+    tableArr(11, 1) = values1(10)
+
+    dmKey = values1(11)
+    foundData = FindFieldRow(fieldInfo, dmKey)
+
+    If IsArray(foundData) Then
+        tableArr(12, 1) = ConvertBooleanForTable(foundData(2))
+        tableArr(13, 1) = ConvertBooleanForTable(foundData(4))
+        tableArr(14, 1) = ConvertBooleanForTable(foundData(1))
+        tableArr(15, 1) = dmKey
+        tableArr(16, 1) = ConvertBooleanForTable(foundData(7))
+        tableArr(17, 1) = ExtractTextMaxLength(foundData(12))
+    Else
+        tableArr(15, 1) = dmKey
+    End If
+
+    tableArr(18, 1) = ConvertBooleanForTable(values1(12))
+    tableArr(19, 1) = ConvertBooleanForTable(values1(13))
+    tableArr(20, 1) = ConvertBooleanForTable(values1(14))
+    tableArr(21, 1) = values1(15)
+    tableArr(22, 1) = ConvertBooleanForTable(values1(16))
+    tableArr(23, 1) = ConvertBooleanForTable(values1(17))
+    tableArr(24, 1) = ConvertBooleanForTable(values1(18))
+    tableArr(25, 1) = "-"
+    tableArr(26, 1) = ConvertBooleanForTable(values1(19))
+    tableArr(27, 1) = ConvertBooleanForTable(values1(20))
+    tableArr(28, 1) = "-"
+    tableArr(29, 1) = ConvertBooleanForTable(values1(21))
+    tableArr(30, 1) = ConvertBooleanForTable(values1(22))
+    tableArr(31, 1) = ConvertBooleanForTable(values1(23))
+    tableArr(32, 1) = ConvertBooleanForTable(values1(24))
+    tableArr(33, 1) = ConvertBooleanForTable(values1(25))
+    tableArr(34, 1) = ConvertBooleanForTable(values1(26))
+    tableArr(35, 1) = ConvertBooleanForTable(values1(27))
+    tableArr(36, 1) = ConvertBooleanForTable(values1(28))
+    tableArr(37, 1) = "-"
+
+    wsTable.Range("E5:E41").Value = tableArr
+    wsTable.Range("E5:E41").Font.Color = COLOR_BLACK
+End Sub
+
+Sub FillFieldSheet(wsField, fieldInfo)
+    Dim dataArr, headerMap, rowCount
+    Dim outArr, r
+
+    dataArr = fieldInfo(0)
+    Set headerMap = fieldInfo(1)
+    rowCount = UBound(dataArr, 1) - 1
+    If rowCount <= 0 Then Exit Sub
+
+    ReDim outArr(1 To rowCount, 1 To 34)
+
+    For r = 2 To UBound(dataArr, 1)
+        FillFieldRow outArr, r - 1, dataArr, r, headerMap
+    Next
+
+    wsField.Range("D7:AK" & (6 + rowCount)).Value = outArr
+    wsField.Range("D7:AK" & (6 + rowCount)).Font.Color = COLOR_BLACK
+End Sub
+
+Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
+    Dim schemaName, displayName, customAttr, attrType, typeValue, requiredLevel
+    Dim auditEnabled, secured, advFind, description, additionalData
+    Dim info, targetText, defaultText
+
+    schemaName = ConvertPrefixName(GetCellByHeader(dataArr, srcRow, headerMap, "Schema Name"))
+    displayName = GetCellByHeader(dataArr, srcRow, headerMap, "Display Name")
+    customAttr = ConvertCustomAttribute(GetCellByHeader(dataArr, srcRow, headerMap, "Custom Attribute"))
+    attrType = GetCellByHeader(dataArr, srcRow, headerMap, "Attribute Type")
+    typeValue = ConvertTypeLabel(GetCellByHeader(dataArr, srcRow, headerMap, "Type"))
+    requiredLevel = ConvertRequiredLevel(GetCellByHeader(dataArr, srcRow, headerMap, "Required Level"))
+    auditEnabled = ConvertBooleanForField(GetCellByHeader(dataArr, srcRow, headerMap, "Audit Enabled"))
+    secured = ConvertBooleanForField(GetCellByHeader(dataArr, srcRow, headerMap, "Secured"))
+    advFind = ConvertBooleanForField(GetCellByHeader(dataArr, srcRow, headerMap, "ValidFor AdvancedFind"))
+    description = GetCellByHeader(dataArr, srcRow, headerMap, "Description")
+    additionalData = CleanAdditionalData(GetCellByHeader(dataArr, srcRow, headerMap, "Additional data"))
+
+    info = BuildAttributeTypeInfo(attrType, additionalData)
+    targetText = ExtractValueFromAdditionalData(additionalData, "Target:")
+    If targetText = "" Then
+        targetText = ExtractValueFromAdditionalData(additionalData, "targets:")
+    End If
+    targetText = ConvertPrefixList(targetText)
+
+    defaultText = info(4)
+    If LCase(defaultText) = "n/a" Then
+        defaultText = "なし"
+    End If
+
+    outArr(outRow, 1) = schemaName
+    outArr(outRow, 2) = displayName
+    outArr(outRow, 4) = customAttr
+    outArr(outRow, 7) = info(0)
+    outArr(outRow, 8) = typeValue
+    outArr(outRow, 9) = requiredLevel
+    outArr(outRow, 12) = info(1)
+    outArr(outRow, 13) = info(2)
+    outArr(outRow, 17) = info(3)
+    outArr(outRow, 18) = defaultText
+    outArr(outRow, 19) = targetText
+    outArr(outRow, 21) = auditEnabled
+    outArr(outRow, 22) = secured
+    outArr(outRow, 25) = advFind
+    outArr(outRow, 28) = description
+
+    If LCase(Trim(attrType)) = "text" Or LCase(Trim(attrType)) = "multiline text" Then
+        outArr(outRow, 34) = additionalData
+    End If
+End Sub
+
+Function BuildAttributeTypeInfo(attrType, additionalData)
+    Dim info(5)
+    Dim key, formatLabel
+
+    key = LCase(Trim(CStr(attrType)))
+    formatLabel = GetDateFormatLabel(additionalData)
+
+    Select Case key
+        Case "bigint"
+            info(0) = "数値 - 整数(Int)"
+            info(1) = ExtractValueFromAdditionalData(additionalData, "Maximum value:")
+            info(2) = ExtractValueFromAdditionalData(additionalData, "Minimum value:")
+        Case "choice"
+            info(0) = "選択肢"
+            info(3) = ExtractValueFromAdditionalData(additionalData, "Options:")
+            info(4) = ExtractValueFromAdditionalData(additionalData, "Default:")
+        Case "choices"
+            info(0) = "選択肢(複数)"
+            info(3) = ExtractValueFromAdditionalData(additionalData, "Options:")
+            info(4) = ExtractValueFromAdditionalData(additionalData, "Default:")
+        Case "currency"
+            info(0) = "通貨"
+            info(1) = ExtractValueFromAdditionalData(additionalData, "Maximum value:")
+            info(2) = ExtractValueFromAdditionalData(additionalData, "Minimum value:")
+        Case "decimal"
+            info(0) = "数値 - 少数(10進数)"
+            info(1) = ExtractValueFromAdditionalData(additionalData, "Maximum value:")
+            info(2) = ExtractValueFromAdditionalData(additionalData, "Minimum value:")
+        Case "double"
+            info(0) = "数値 - 浮動小数点数"
+            info(1) = ExtractValueFromAdditionalData(additionalData, "Maximum value:")
+            info(2) = ExtractValueFromAdditionalData(additionalData, "Minimum value:")
+        Case "multiline text"
+            info(0) = "複数行テキスト - プレーン"
+        Case "owner"
+            info(0) = "所有者"
+        Case "state"
+            info(0) = "状態"
+            info(3) = ExtractValueFromAdditionalData(additionalData, "States:")
+        Case "status"
+            info(0) = "ステータス"
+            info(3) = ExtractValueFromAdditionalData(additionalData, "States:")
+        Case "text"
+            info(0) = "1行テキスト - プレーン"
+        Case "two options"
+            info(0) = "はい/いいえ"
+            info(3) = ExtractValueFromAdditionalData(additionalData, "Options:")
+            info(4) = ExtractValueFromAdditionalData(additionalData, "Default Value:")
+            If info(4) = "" Then info(4) = ExtractValueFromAdditionalData(additionalData, "Default:")
+        Case "uniqueidentifier"
+            info(0) = "一意識別子"
+        Case "whole number"
+            info(0) = "数値 - 整数(Int)"
+            info(1) = ExtractValueFromAdditionalData(additionalData, "Maximum value:")
+            info(2) = ExtractValueFromAdditionalData(additionalData, "Minimum value:")
+        Case "lookup"
+            info(0) = "検索"
+        Case "datetime", "dateandtime"
+            If formatLabel <> "" Then
+                info(0) = formatLabel
+            Else
+                info(0) = "日付と時刻"
+            End If
+        Case Else
+            info(0) = attrType
+    End Select
+
+    info(5) = ConvertPrefixList(ExtractValueFromAdditionalData(additionalData, "targets:"))
+    If info(5) = "" Then
+        info(5) = ConvertPrefixList(ExtractValueFromAdditionalData(additionalData, "Target:"))
+    End If
+
+    BuildAttributeTypeInfo = info
+End Function
+
+Function ReadFieldSheet(ws)
+    Dim lastRow, lastCol, dataArr, headerMap, col, headerText
+    Dim result(1)
+
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+    If lastRow < 1 Or lastCol < 1 Then Exit Function
+
+    dataArr = ws.Range(ws.Cells(1, 1), ws.Cells(lastRow, lastCol)).Value2
+
+    Set headerMap = CreateObject("Scripting.Dictionary")
+    For col = 1 To lastCol
+        headerText = LCase(Trim(CStr(dataArr(1, col))))
+        If headerText <> "" Then
+            headerMap(headerText) = col
+        End If
+    Next
+
+    result(0) = dataArr
+    Set result(1) = headerMap
+    ReadFieldSheet = result
+End Function
+
+Function FindFieldRow(fieldInfo, logicalName)
+    Dim dataArr, rowCount, r, value
+
+    If Trim(CStr(logicalName)) = "" Then Exit Function
+
+    dataArr = fieldInfo(0)
+    rowCount = UBound(dataArr, 1)
+
+    For r = 2 To rowCount
+        value = Trim(CStr(dataArr(r, 1)))
+        If LCase(value) = LCase(Trim(CStr(logicalName))) Then
+            FindFieldRow = Array( _
+                GetArrayCell(dataArr, r, 1), GetArrayCell(dataArr, r, 2), GetArrayCell(dataArr, r, 3), GetArrayCell(dataArr, r, 4), _
+                GetArrayCell(dataArr, r, 5), GetArrayCell(dataArr, r, 6), GetArrayCell(dataArr, r, 7), GetArrayCell(dataArr, r, 8), _
+                GetArrayCell(dataArr, r, 9), GetArrayCell(dataArr, r, 10), GetArrayCell(dataArr, r, 11), GetArrayCell(dataArr, r, 12), GetArrayCell(dataArr, r, 13) _
+            )
+            Exit Function
+        End If
+    Next
+End Function
+
+Function GetArrayCell(dataArr, rowNo, colNo)
+    If colNo <= UBound(dataArr, 2) Then
+        GetArrayCell = Nz(dataArr(rowNo, colNo))
+    Else
+        GetArrayCell = ""
+    End If
+End Function
+
+Function GetCellByHeader(dataArr, rowNo, headerMap, headerName)
+    Dim key
+
+    key = LCase(headerName)
+    If headerMap.Exists(key) Then
+        GetCellByHeader = Nz(dataArr(rowNo, headerMap(key)))
+    Else
+        GetCellByHeader = ""
+    End If
+End Function
+
+Function ConvertBooleanForTable(value)
+    Dim lowerVal
+
+    lowerVal = LCase(Trim(CStr(value)))
+    If lowerVal = "true" Then
+        ConvertBooleanForTable = ChrW(10003)
+    ElseIf lowerVal = "false" Or lowerVal = "" Then
+        ConvertBooleanForTable = "-"
+    Else
+        ConvertBooleanForTable = value
+    End If
+End Function
+
+Function ConvertBooleanForField(value)
+    Dim lowerVal
+
+    lowerVal = LCase(Trim(CStr(value)))
+    If lowerVal = "true" Then
+        ConvertBooleanForField = "TRUE"
+    ElseIf lowerVal = "false" Then
+        ConvertBooleanForField = "FALSE"
+    Else
+        ConvertBooleanForField = value
+    End If
+End Function
+
+Function ConvertCustomAttribute(value)
+    Dim lowerVal
+
+    lowerVal = LCase(Trim(CStr(value)))
+    If lowerVal = "true" Then
+        ConvertCustomAttribute = "カスタム"
+    ElseIf lowerVal = "false" Then
+        ConvertCustomAttribute = "標準"
+    Else
+        ConvertCustomAttribute = value
+    End If
+End Function
+
+Function ConvertTypeLabel(value)
+    Dim lowerVal
+
+    lowerVal = LCase(Trim(CStr(value)))
+    Select Case lowerVal
+        Case "simple"
+            ConvertTypeLabel = "シンプル"
+        Case "calculated"
+            ConvertTypeLabel = "計算"
+        Case "rollup"
+            ConvertTypeLabel = "ロールアップ"
+        Case Else
+            ConvertTypeLabel = value
+    End Select
+End Function
+
+Function ConvertRequiredLevel(value)
+    Dim lowerVal
+
+    lowerVal = LCase(Trim(CStr(value)))
+    Select Case lowerVal
+        Case "none"
+            ConvertRequiredLevel = "任意"
+        Case "applicationrequired"
+            ConvertRequiredLevel = "システム要求"
+        Case "systemrequired"
+            ConvertRequiredLevel = "必須項目"
+        Case "recommended"
+            ConvertRequiredLevel = "推奨項目"
+        Case Else
+            ConvertRequiredLevel = value
+    End Select
+End Function
+
+Function GetDateFormatLabel(additionalData)
+    Dim formatValue
+
+    formatValue = LCase(ExtractValueFromAdditionalData(additionalData, "Format:"))
+    If InStr(formatValue, "dateandtime") > 0 Or InStr(formatValue, "datetime") > 0 Then
+        GetDateFormatLabel = "日付と時刻 - 日時"
+    ElseIf InStr(formatValue, "dateonly") > 0 Then
+        GetDateFormatLabel = "日付と時刻 - 日付のみ"
+    Else
+        GetDateFormatLabel = ""
+    End If
+End Function
+
+Function CleanAdditionalData(value)
+    Dim p
+
+    value = CStr(value)
+    p = InStr(1, value, "Precision:", vbTextCompare)
+    If p > 0 Then
+        value = Left(value, p - 1)
+    End If
+    CleanAdditionalData = Trim(value)
+End Function
+
 Function ExtractValueFromAdditionalData(additionalData, keyword)
-    Dim pos, valueStart, valueEnd, nextKeywordPos
-    Dim result, tempValue
-    Dim keywords
-    Dim i, keywordPos, minPos
-    
-    result = ""
+    Dim keywords, pos, valueStart, i, nextPos, nearestPos, tempValue
+
+    keywords = Array("Minimum value:", "Maximum value:", "Options:", "Default:", "Default Value:", "Target:", "States:", "Format:", "targets:")
     pos = InStr(1, additionalData, keyword, vbTextCompare)
-    
-    If pos > 0 Then
-        valueStart = pos + Len(keyword)
-        
-        ' 次のキーワードの位置を探す
-        keywords = Array("Minimum value:", "Maximum value:", "Options:", "Default:", "Default Value:", "Target:", "States:", "Format:", "targets:")
-        minPos = 0
-        
-        For i = 0 To UBound(keywords)
-            keywordPos = InStr(valueStart, additionalData, keywords(i), vbTextCompare)
-            If keywordPos > 0 Then
-                If minPos = 0 Or keywordPos < minPos Then
-                    minPos = keywordPos
-                End If
+    If pos = 0 Then
+        ExtractValueFromAdditionalData = ""
+        Exit Function
+    End If
+
+    valueStart = pos + Len(keyword)
+    nearestPos = 0
+    For i = 0 To UBound(keywords)
+        nextPos = InStr(valueStart, additionalData, keywords(i), vbTextCompare)
+        If nextPos > 0 Then
+            If nearestPos = 0 Or nextPos < nearestPos Then
+                nearestPos = nextPos
+            End If
+        End If
+    Next
+
+    If nearestPos > 0 Then
+        tempValue = Mid(additionalData, valueStart, nearestPos - valueStart)
+    Else
+        tempValue = Mid(additionalData, valueStart)
+    End If
+
+    tempValue = Replace(tempValue, vbCrLf, "")
+    tempValue = Replace(tempValue, vbLf, "")
+    tempValue = Replace(tempValue, vbCr, "")
+    tempValue = Replace(tempValue, " ", "")
+    tempValue = Trim(tempValue)
+    ExtractValueFromAdditionalData = tempValue
+End Function
+
+Function ExtractTextMaxLength(value)
+    Dim pos, tailText, i, ch, result
+
+    pos = InStr(1, CStr(value), "TextMax Length:", vbTextCompare)
+    If pos = 0 Then
+        ExtractTextMaxLength = ""
+        Exit Function
+    End If
+
+    tailText = Mid(CStr(value), pos + Len("TextMax Length:"))
+    result = ""
+    For i = 1 To Len(tailText)
+        ch = Mid(tailText, i, 1)
+        If ch >= "0" And ch <= "9" Then
+            result = result & ch
+        ElseIf result <> "" Then
+            Exit For
+        End If
+    Next
+    ExtractTextMaxLength = result
+End Function
+
+Function ConvertPrefixName(value)
+    Dim mappings, i, sourcePrefix, destPrefix, textValue, lowerText
+
+    textValue = Trim(CStr(value))
+    If textValue = "" Then
+        ConvertPrefixName = ""
+        Exit Function
+    End If
+
+    mappings = Array( _
+        Array("adx_", "tel_wo_adx_"), _
+        Array("billto_", "tel_wo_billto_"), _
+        Array("cnt_", "tel_wo_cnt_"), _
+        Array("com_", "tel_wo_com_"), _
+        Array("msa_", "tel_wo_msa_"), _
+        Array("msdyn_", "tel_wo_"), _
+        Array("mspp_", "tel_wo_"), _
+        Array("parent_", "tel_wo_parent_"), _
+        Array("resco_", "tel_wo_resco_"), _
+        Array("shipto_", "tel_wo_shipto_"), _
+        Array("tea_", "tel_wo_tea_"), _
+        Array("tel_", "tel_wo_"), _
+        Array("tsc_", "tel_wo_tsc_"), _
+        Array("wo_", "tel_wo_") _
+    )
+
+    lowerText = LCase(textValue)
+    For i = 0 To UBound(mappings)
+        sourcePrefix = mappings(i)(0)
+        destPrefix = mappings(i)(1)
+        If Left(lowerText, Len(sourcePrefix)) = sourcePrefix Then
+            ConvertPrefixName = destPrefix & Mid(textValue, Len(sourcePrefix) + 1)
+            Exit Function
+        End If
+    Next
+
+    ConvertPrefixName = textValue
+End Function
+
+Function ConvertPrefixList(value)
+    Dim parts, i
+
+    value = Trim(CStr(value))
+    If value = "" Then
+        ConvertPrefixList = ""
+        Exit Function
+    End If
+
+    parts = Split(value, ",")
+    For i = 0 To UBound(parts)
+        parts(i) = ConvertPrefixName(Trim(parts(i)))
+    Next
+    ConvertPrefixList = Join(parts, ", ")
+End Function
+
+Function DefaultText(value, fallback)
+    If Trim(CStr(value)) = "" Then
+        DefaultText = fallback
+    Else
+        DefaultText = value
+    End If
+End Function
+
+Function Nz(value)
+    If IsNull(value) Or IsEmpty(value) Then
+        Nz = ""
+    Else
+        Nz = value
+    End If
+End Function
+
+Function FindTemplatePath(folderPath)
+    Dim parentPath, templatePath
+
+    parentPath = gFso.GetParentFolderName(folderPath)
+    templatePath = gFso.BuildPath(parentPath, "テンプレート.xlsx")
+    If gFso.FileExists(templatePath) Then
+        FindTemplatePath = templatePath
+        Exit Function
+    End If
+
+    templatePath = gFso.BuildPath(parentPath, "template.xlsx")
+    If gFso.FileExists(templatePath) Then
+        FindTemplatePath = templatePath
+    Else
+        FindTemplatePath = ""
+    End If
+End Function
+
+Function CollectExcelFiles(folderPath, templatePath)
+    Dim folder, file, count, items(), ext, templateName
+
+    Set folder = gFso.GetFolder(folderPath)
+    templateName = LCase(gFso.GetFileName(templatePath))
+    count = -1
+
+    For Each file In folder.Files
+        ext = LCase(gFso.GetExtensionName(file.Name))
+        If (ext = "xlsx" Or ext = "xlsm" Or ext = "xls" Or ext = "xlsb") Then
+            If LCase(file.Name) <> templateName Then
+                count = count + 1
+                ReDim Preserve items(count)
+                items(count) = file.Path
+            End If
+        End If
+    Next
+
+    If count = -1 Then Exit Function
+    SortTextArray items
+    CollectExcelFiles = items
+End Function
+
+Sub SortTextArray(ByRef items)
+    Dim i, j, temp
+
+    For i = 0 To UBound(items) - 1
+        For j = i + 1 To UBound(items)
+            If LCase(CStr(items(i))) > LCase(CStr(items(j))) Then
+                temp = items(i)
+                items(i) = items(j)
+                items(j) = temp
             End If
         Next
-        
-        If minPos > 0 Then
-            tempValue = Mid(additionalData, valueStart, minPos - valueStart)
-        Else
-            tempValue = Mid(additionalData, valueStart)
-        End If
-        
-        ' 改行やスペースを取り除く
-        tempValue = Replace(tempValue, vbCrLf, "")
-        tempValue = Replace(tempValue, vbLf, "")
-        tempValue = Replace(tempValue, vbCr, "")
-        tempValue = Replace(tempValue, " ", "")
-        result = Trim(tempValue)
+    Next
+End Sub
+
+Sub EnsureFolder(folderPath)
+    If Not gFso.FolderExists(folderPath) Then
+        gFso.CreateFolder folderPath
     End If
-    
-    ExtractValueFromAdditionalData = result
+End Sub
+
+Function StartExcel(templatePath, ByRef message)
+    StartExcel = False
+    message = ""
+
+    On Error Resume Next
+    Set gExcel = CreateObject("Excel.Application")
+    If Err.Number <> 0 Then
+        message = "Excelを起動できません: " & Err.Description
+        Err.Clear
+        Exit Function
+    End If
+
+    gExcel.Visible = False
+    gExcel.DisplayAlerts = False
+    gExcel.ScreenUpdating = False
+    gExcel.EnableEvents = False
+    gExcel.AskToUpdateLinks = False
+    gExcel.Calculation = xlCalculationManual
+
+    Set gTemplateWb = gExcel.Workbooks.Open(templatePath, 0, True)
+    If Err.Number <> 0 Or gTemplateWb Is Nothing Then
+        message = "テンプレートを開けません: " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    StartExcel = True
+End Function
+
+Function SaveWorkbookAs(wb, outputPath, ByRef errMsg)
+    SaveWorkbookAs = False
+    errMsg = ""
+
+    On Error Resume Next
+    If gFso.FileExists(outputPath) Then
+        gFso.DeleteFile outputPath, True
+    End If
+    wb.SaveAs outputPath, xlOpenXMLWorkbook
+    If Err.Number <> 0 Then
+        errMsg = "保存に失敗しました: " & gFso.GetFileName(outputPath) & " / " & Err.Description
+        Err.Clear
+    Else
+        SaveWorkbookAs = True
+    End If
+    On Error GoTo 0
+End Function
+
+Sub CloseWorkbookSafe(ByRef wb, ByVal saveChanges)
+    On Error Resume Next
+    If Not wb Is Nothing Then
+        wb.Close saveChanges
+        Set wb = Nothing
+    End If
+    On Error GoTo 0
+End Sub
+
+Sub Cleanup()
+    On Error Resume Next
+
+    CloseWorkbookSafe gTemplateWb, False
+
+    If Not gExcel Is Nothing Then
+        gExcel.Calculation = xlCalculationAutomatic
+        gExcel.ScreenUpdating = True
+        gExcel.EnableEvents = True
+        gExcel.DisplayAlerts = True
+        gExcel.Quit
+        Set gExcel = Nothing
+    End If
+
+    Set gFso = Nothing
+    On Error GoTo 0
+End Sub
+
+Sub AppendDetail(ByRef detail, ByVal message)
+    If detail = "" Then
+        detail = vbCrLf & vbCrLf & "詳細:" & vbCrLf & message
+    Else
+        detail = detail & vbCrLf & message
+    End If
+End Sub
+
+Function SanitizeFileName(fileName)
+    Dim chars, i
+
+    chars = Array("\", "/", ":", "*", "?", """", "<", ">", "|")
+    SanitizeFileName = fileName
+    For i = 0 To UBound(chars)
+        SanitizeFileName = Replace(SanitizeFileName, chars(i), "_")
+    Next
 End Function
