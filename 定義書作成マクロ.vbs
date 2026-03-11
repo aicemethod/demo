@@ -207,54 +207,54 @@ Sub FillTableSheet(wsTable, values1, fieldInfo)
     Dim rowNo, tableArr
     Dim dmKey, foundData
 
-    ReDim tableArr(1 To 37, 1 To 1)
+    ReDim tableArr(36, 0)
 
-    tableArr(1, 1) = values1(0)
-    tableArr(2, 1) = values1(1)
-    tableArr(3, 1) = values1(2)
-    tableArr(4, 1) = ConvertBooleanForTable(values1(3))
-    tableArr(5, 1) = values1(4)
-    tableArr(6, 1) = values1(5)
-    tableArr(7, 1) = values1(6)
-    tableArr(8, 1) = values1(7)
-    tableArr(9, 1) = DefaultText(values1(8), "なし")
-    tableArr(10, 1) = values1(9)
-    tableArr(11, 1) = values1(10)
+    tableArr(0, 0) = values1(0)
+    tableArr(1, 0) = values1(1)
+    tableArr(2, 0) = values1(2)
+    tableArr(3, 0) = ConvertBooleanForTable(values1(3))
+    tableArr(4, 0) = values1(4)
+    tableArr(5, 0) = values1(5)
+    tableArr(6, 0) = values1(6)
+    tableArr(7, 0) = values1(7)
+    tableArr(8, 0) = DefaultText(values1(8), "なし")
+    tableArr(9, 0) = values1(9)
+    tableArr(10, 0) = values1(10)
 
     dmKey = values1(11)
     foundData = FindFieldRow(fieldInfo, dmKey)
 
     If IsArray(foundData) Then
-        tableArr(12, 1) = ConvertBooleanForTable(foundData(2))
-        tableArr(13, 1) = ConvertBooleanForTable(foundData(4))
-        tableArr(14, 1) = ConvertBooleanForTable(foundData(1))
-        tableArr(15, 1) = dmKey
-        tableArr(16, 1) = ConvertBooleanForTable(foundData(7))
-        tableArr(17, 1) = ExtractTextMaxLength(foundData(12))
+        tableArr(11, 0) = ConvertBooleanForTable(foundData(2))
+        tableArr(12, 0) = ConvertBooleanForTable(foundData(4))
+        tableArr(13, 0) = ConvertBooleanForTable(foundData(1))
+        tableArr(14, 0) = dmKey
+        tableArr(15, 0) = ConvertBooleanForTable(foundData(7))
+        tableArr(16, 0) = ExtractTextMaxLength(foundData(12))
     Else
-        tableArr(15, 1) = dmKey
+        tableArr(14, 0) = dmKey
     End If
 
-    tableArr(18, 1) = ConvertBooleanForTable(values1(12))
-    tableArr(19, 1) = ConvertBooleanForTable(values1(13))
-    tableArr(20, 1) = ConvertBooleanForTable(values1(14))
-    tableArr(21, 1) = values1(15)
-    tableArr(22, 1) = ConvertBooleanForTable(values1(16))
-    tableArr(23, 1) = ConvertBooleanForTable(values1(17))
-    tableArr(24, 1) = ConvertBooleanForTable(values1(18))
-    tableArr(25, 1) = "-"
-    tableArr(26, 1) = ConvertBooleanForTable(values1(19))
-    tableArr(27, 1) = ConvertBooleanForTable(values1(20))
-    tableArr(28, 1) = "-"
-    tableArr(29, 1) = ConvertBooleanForTable(values1(21))
-    tableArr(30, 1) = ConvertBooleanForTable(values1(22))
-    tableArr(31, 1) = ConvertBooleanForTable(values1(23))
-    tableArr(32, 1) = ConvertBooleanForTable(values1(24))
-    tableArr(33, 1) = ConvertBooleanForTable(values1(25))
-    tableArr(34, 1) = ConvertBooleanForTable(values1(26))
-    tableArr(35, 1) = ConvertBooleanForTable(values1(27))
-    tableArr(36, 1) = ConvertBooleanForTable(values1(28))
-    tableArr(37, 1) = "-"
+    tableArr(17, 0) = ConvertBooleanForTable(values1(12))
+    tableArr(18, 0) = ConvertBooleanForTable(values1(13))
+    tableArr(19, 0) = ConvertBooleanForTable(values1(14))
+    tableArr(20, 0) = values1(15)
+    tableArr(21, 0) = ConvertBooleanForTable(values1(16))
+    tableArr(22, 0) = ConvertBooleanForTable(values1(17))
+    tableArr(23, 0) = ConvertBooleanForTable(values1(18))
+    tableArr(24, 0) = "-"
+    tableArr(25, 0) = ConvertBooleanForTable(values1(19))
+    tableArr(26, 0) = ConvertBooleanForTable(values1(20))
+    tableArr(27, 0) = "-"
+    tableArr(28, 0) = ConvertBooleanForTable(values1(21))
+    tableArr(29, 0) = ConvertBooleanForTable(values1(22))
+    tableArr(30, 0) = ConvertBooleanForTable(values1(23))
+    tableArr(31, 0) = ConvertBooleanForTable(values1(24))
+    tableArr(32, 0) = ConvertBooleanForTable(values1(25))
+    tableArr(33, 0) = ConvertBooleanForTable(values1(26))
+    tableArr(34, 0) = ConvertBooleanForTable(values1(27))
+    tableArr(35, 0) = ConvertBooleanForTable(values1(28))
+    tableArr(36, 0) = "-"
 
     wsTable.Range("E5:E41").Value = tableArr
     wsTable.Range("E5:E41").Font.Color = COLOR_BLACK
@@ -269,7 +269,7 @@ Sub FillFieldSheet(wsField, fieldInfo)
     rowCount = UBound(dataArr, 1) - 1
     If rowCount <= 0 Then Exit Sub
 
-    ReDim outArr(1 To rowCount, 1 To 34)
+    ReDim outArr(rowCount - 1, 33)
 
     For r = 2 To UBound(dataArr, 1)
         FillFieldRow outArr, r - 1, dataArr, r, headerMap
@@ -308,24 +308,24 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
         defaultText = "なし"
     End If
 
-    outArr(outRow, 1) = schemaName
-    outArr(outRow, 2) = displayName
-    outArr(outRow, 4) = customAttr
-    outArr(outRow, 7) = info(0)
-    outArr(outRow, 8) = typeValue
-    outArr(outRow, 9) = requiredLevel
-    outArr(outRow, 12) = info(1)
-    outArr(outRow, 13) = info(2)
-    outArr(outRow, 17) = info(3)
-    outArr(outRow, 18) = defaultText
-    outArr(outRow, 19) = targetText
-    outArr(outRow, 21) = auditEnabled
-    outArr(outRow, 22) = secured
-    outArr(outRow, 25) = advFind
-    outArr(outRow, 28) = description
+    outArr(outRow, 0) = schemaName
+    outArr(outRow, 1) = displayName
+    outArr(outRow, 3) = customAttr
+    outArr(outRow, 6) = info(0)
+    outArr(outRow, 7) = typeValue
+    outArr(outRow, 8) = requiredLevel
+    outArr(outRow, 11) = info(1)
+    outArr(outRow, 12) = info(2)
+    outArr(outRow, 16) = info(3)
+    outArr(outRow, 17) = defaultText
+    outArr(outRow, 18) = targetText
+    outArr(outRow, 20) = auditEnabled
+    outArr(outRow, 21) = secured
+    outArr(outRow, 24) = advFind
+    outArr(outRow, 27) = description
 
     If LCase(Trim(attrType)) = "text" Or LCase(Trim(attrType)) = "multiline text" Then
-        outArr(outRow, 34) = additionalData
+        outArr(outRow, 33) = additionalData
     End If
 End Sub
 
