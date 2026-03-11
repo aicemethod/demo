@@ -288,17 +288,13 @@ Sub FillFieldSheet(wsField, fieldInfo, values1, englishValues)
 
     For r = 2 To UBound(dataArr, 1)
         FillFieldRow outArr, r - 1, dataArr, r, headerMap, djKey, dmKey
-        If IsArray(englishValues) Then
-            If (r - 2) <= UBound(englishValues) Then
-                outArr(r - 1, 3) = englishValues(r - 2)
-            End If
-        End If
     Next
 
     SortFieldArrayByCustomAttribute outArr
 
     wsField.Range("C7:AJ" & (6 + rowCount)).Value = outArr
     wsField.Range("C7:AJ" & (6 + rowCount)).Font.Color = COLOR_BLACK
+    ApplyEnglishValues wsField, englishValues, rowCount
 
     wsField.Range("AG5").Value = "Schema Name"
     wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("AI7:AI" & (6 + rowCount)).Value
@@ -311,6 +307,23 @@ Sub FillFieldSheet(wsField, fieldInfo, values1, englishValues)
     wsField.Range("AH7:AH" & (6 + rowCount)).ClearContents
     wsField.Columns(38).Delete
     TrimEmptyFieldRows wsField, rowCount
+End Sub
+
+Sub ApplyEnglishValues(wsField, englishValues, rowCount)
+    Dim outArr, i
+
+    If rowCount <= 0 Then Exit Sub
+    If Not IsArray(englishValues) Then Exit Sub
+
+    outArr = wsField.Range("E7:E" & (6 + rowCount)).Value
+
+    For i = 0 To UBound(englishValues)
+        If (i + 1) <= UBound(outArr, 1) Then
+            outArr(i + 1, 1) = englishValues(i)
+        End If
+    Next
+
+    wsField.Range("E7:E" & (6 + rowCount)).Value = outArr
 End Sub
 
 Sub SortFieldArrayByCustomAttribute(ByRef outArr)
@@ -559,6 +572,7 @@ End Function
 
 Function FindEnglishFilePath(sourceFilePath)
     Dim scriptFolderPath, englishRootPath, englishPath
+    Dim baseName, folder, file, ext
 
     scriptFolderPath = gFso.GetParentFolderName(WScript.ScriptFullName)
     englishRootPath = gFso.BuildPath(scriptFolderPath, "30_英語ファイル")
@@ -567,6 +581,21 @@ Function FindEnglishFilePath(sourceFilePath)
     If gFso.FileExists(englishPath) Then
         FindEnglishFilePath = englishPath
     Else
+        baseName = LCase(gFso.GetBaseName(sourceFilePath))
+        If gFso.FolderExists(englishRootPath) Then
+            Set folder = gFso.GetFolder(englishRootPath)
+            For Each file In folder.Files
+                ext = LCase(gFso.GetExtensionName(file.Name))
+                If gFso.GetBaseName(file.Name) <> "" Then
+                    If LCase(gFso.GetBaseName(file.Name)) = baseName Then
+                        If ext = "xlsx" Or ext = "xlsm" Or ext = "xls" Or ext = "xlsb" Then
+                            FindEnglishFilePath = file.Path
+                            Exit Function
+                        End If
+                    End If
+                End If
+            Next
+        End If
         FindEnglishFilePath = ""
     End If
 End Function
