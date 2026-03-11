@@ -95,6 +95,8 @@ Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
     Set srcWb = Nothing
     Set outWb = Nothing
 
+    englishValues = ReadEnglishSheetValues(filePath)
+
     On Error Resume Next
     Set srcWb = gExcel.Workbooks.Open(filePath, 0, True)
     If Err.Number <> 0 Then
@@ -129,8 +131,6 @@ Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
         CloseWorkbookSafe srcWb, False
         Exit Function
     End If
-
-    englishValues = ReadEnglishSheetValues(filePath)
 
     On Error Resume Next
     gTemplateWb.Worksheets.Copy
