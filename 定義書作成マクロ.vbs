@@ -277,6 +277,9 @@ Sub FillFieldSheet(wsField, fieldInfo)
 
     wsField.Range("C7:AJ" & (6 + rowCount)).Value = outArr
     wsField.Range("C7:AJ" & (6 + rowCount)).Font.Color = COLOR_BLACK
+
+    wsField.Range("AG5").Value = "ServiceCRMフィールド名"
+    wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("D7:D" & (6 + rowCount)).Value
 End Sub
 
 Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
@@ -631,6 +634,7 @@ Function ConvertPrefixName(value)
     End If
 
     mappings = Array( _
+        Array("tel_wo_", "tel_wo_"), _
         Array("adx_", "tel_wo_adx_"), _
         Array("billto_", "tel_wo_billto_"), _
         Array("cnt_", "tel_wo_cnt_"), _
