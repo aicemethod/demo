@@ -1,67 +1,72 @@
 Option Explicit
 
 Dim fso, folderPath, folder, file
-Dim xl, wb, ws, outWb, outWs, errWs
+Dim xl, wb, ws
+Dim outWb, outWs, errWs
 Dim row, outRow, errRow
 Dim targetPath
 
 If WScript.Arguments.Count = 0 Then
-    MsgBox "フォルダをドラッグしてください"
-    WScript.Quit
+MsgBox "フォルダをドラッグしてください"
+WScript.Quit
 End If
 
 folderPath = WScript.Arguments(0)
-targetPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName) & "\全スキーマ名取得.xlsx"
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 
-'Excel起動
+targetPath = fso.GetParentFolderName(WScript.ScriptFullName) & "\全スキーマ名取得.xlsx"
+
 Set xl = CreateObject("Excel.Application")
 xl.Visible = False
 xl.DisplayAlerts = False
 
-'出力ファイルを開く
 Set outWb = xl.Workbooks.Open(targetPath)
 Set outWs = outWb.Worksheets(1)
 Set errWs = outWb.Worksheets(2)
 
-outRow = outWs.Cells(outWs.Rows.Count, 1).End(-4162).Row + 1
-errRow = errWs.Cells(errWs.Rows.Count, 1).End(-4162).Row + 1
+outRow = outWs.Cells(outWs.Rows.Count,1).End(-4162).Row + 1
+errRow = errWs.Cells(errWs.Rows.Count,1).End(-4162).Row + 1
 
 Set folder = fso.GetFolder(folderPath)
 
 For Each file In folder.Files
 
-    If LCase(fso.GetExtensionName(file.Name)) = "xlsx" _
-    Or LCase(fso.GetExtensionName(file.Name)) = "xls" _
-    Or LCase(fso.GetExtensionName(file.Name)) = "xlsm" Then
-    
-        On Error Resume Next
-        
-        Set wb = xl.Workbooks.Open(file.Path)
-        
-        If Err.Number <> 0 Then
-            errWs.Cells(errRow,1).Value = file.Name
-            errRow = errRow + 1
-            Err.Clear
-        Else
-        
-            Set ws = wb.Worksheets(2)
-            row = 2
-            
-            Do While ws.Cells(row,1).Value <> ""
-                outWs.Cells(outRow,1).Value = ws.Cells(row,1).Value
-                outRow = outRow + 1
-                row = row + 1
-            Loop
-            
-            wb.Close False
-            
-        End If
-        
-        On Error GoTo 0
-        
+```
+If LCase(fso.GetExtensionName(file.Name))="xlsx" _
+Or LCase(fso.GetExtensionName(file.Name))="xls" _
+Or LCase(fso.GetExtensionName(file.Name))="xlsm" Then
+
+    Set wb = Nothing
+
+    On Error Resume Next
+    Set wb = xl.Workbooks.Open(file.Path)
+    If Err.Number <> 0 Then
+        errWs.Cells(errRow,1).Value = file.Name
+        errRow = errRow + 1
+        Err.Clear
+    Else
+
+        Set ws = wb.Worksheets(2)
+
+        row = 2
+        Do While ws.Cells(row,1).Value <> ""
+            outWs.Cells(outRow,1).Value = ws.Cells(row,1).Value
+            outRow = outRow + 1
+            row = row + 1
+        Loop
+
     End If
+    On Error GoTo 0
+
+    ' 必ず閉じる
+    If Not wb Is Nothing Then
+        wb.Close False
+        Set wb = Nothing
+    End If
+
+End If
+```
 
 Next
 
