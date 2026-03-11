@@ -88,7 +88,7 @@ End Function
 Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
     Dim srcWb, outWb
     Dim ws1, ws2, wsTable, wsField, wsCover
-    Dim values1, fieldInfo, displayName, outputPath
+    Dim values1, fieldInfo, englishValues, displayName, outputPath
     Dim errMsg
 
     ProcessOneFile = False
@@ -130,6 +130,8 @@ Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
         Exit Function
     End If
 
+    englishValues = ReadEnglishSheetValues(filePath)
+
     On Error Resume Next
     gTemplateWb.Worksheets.Copy
     If Err.Number <> 0 Then
@@ -162,7 +164,7 @@ Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
     On Error GoTo 0
 
     FillTableSheet wsTable, values1, fieldInfo
-    FillFieldSheet wsField, fieldInfo, values1
+    FillFieldSheet wsField, fieldInfo, values1, englishValues
     wsCover.Range("B7").Value = "エンティティ定義書_ID_" & displayName & "_v0.2"
 
     outputPath = gFso.BuildPath(outputFolderPath, SanitizeFileName("エンティティ定義書_ID_" & displayName & "_v0.2.xlsx"))
@@ -270,7 +272,7 @@ Sub FillTableSheet(wsTable, values1, fieldInfo)
     wsTable.Range("E5:E41").Font.Color = COLOR_BLACK
 End Sub
 
-Sub FillFieldSheet(wsField, fieldInfo, values1)
+Sub FillFieldSheet(wsField, fieldInfo, values1, englishValues)
     Dim dataArr, headerMap, rowCount
     Dim outArr, r, djKey, dmKey
 
@@ -286,6 +288,11 @@ Sub FillFieldSheet(wsField, fieldInfo, values1)
 
     For r = 2 To UBound(dataArr, 1)
         FillFieldRow outArr, r - 1, dataArr, r, headerMap, djKey, dmKey
+        If IsArray(englishValues) Then
+            If (r - 2) <= UBound(englishValues) Then
+                outArr(r - 1, 3) = englishValues(r - 2)
+            End If
+        End If
     Next
 
     SortFieldArrayByCustomAttribute outArr
@@ -501,6 +508,68 @@ Function ReadFieldSheet(ws)
     result(0) = dataArr
     Set result(1) = headerMap
     ReadFieldSheet = result
+End Function
+
+Function ReadEnglishSheetValues(sourceFilePath)
+    Dim englishPath, englishWb, englishWs
+    Dim lastRow, arr2d, values()
+    Dim i, rowCount
+
+    englishPath = FindEnglishFilePath(sourceFilePath)
+    If englishPath = "" Then Exit Function
+
+    Set englishWb = Nothing
+    Set englishWs = Nothing
+
+    On Error Resume Next
+    Set englishWb = gExcel.Workbooks.Open(englishPath, 0, True)
+    If Err.Number <> 0 Or englishWb Is Nothing Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    If englishWb.Sheets.Count < 2 Then
+        On Error GoTo 0
+        CloseWorkbookSafe englishWb, False
+        Exit Function
+    End If
+
+    Set englishWs = englishWb.Sheets(2)
+    lastRow = englishWs.Cells(englishWs.Rows.Count, 3).End(xlUp).Row
+
+    If lastRow < 2 Then
+        On Error GoTo 0
+        CloseWorkbookSafe englishWb, False
+        Exit Function
+    End If
+
+    arr2d = englishWs.Range("C2:C" & lastRow).Value2
+    rowCount = UBound(arr2d, 1)
+    ReDim values(rowCount - 1)
+
+    For i = 1 To rowCount
+        values(i - 1) = Nz(arr2d(i, 1))
+    Next
+
+    On Error GoTo 0
+    CloseWorkbookSafe englishWb, False
+    ReadEnglishSheetValues = values
+End Function
+
+Function FindEnglishFilePath(sourceFilePath)
+    Dim sourceFolderPath, baseParentPath, englishRootPath, englishPath
+
+    sourceFolderPath = gFso.GetParentFolderName(sourceFilePath)
+    baseParentPath = gFso.GetParentFolderName(sourceFolderPath)
+    englishRootPath = gFso.BuildPath(baseParentPath, "30_英語ファイル")
+    englishPath = gFso.BuildPath(englishRootPath, gFso.GetFileName(sourceFilePath))
+
+    If gFso.FileExists(englishPath) Then
+        FindEnglishFilePath = englishPath
+    Else
+        FindEnglishFilePath = ""
+    End If
 End Function
 
 Function FindFieldRow(fieldInfo, logicalName)
