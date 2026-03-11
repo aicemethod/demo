@@ -98,6 +98,7 @@ Function UpdateCoverB7(filePath, ByRef updatedCount, ByRef errMsg)
     Dim currentValue
     Dim newValue
     Dim closeErrMsg
+    Dim hasError
 
     UpdateCoverB7 = False
     updatedCount = 0
@@ -105,6 +106,7 @@ Function UpdateCoverB7(filePath, ByRef updatedCount, ByRef errMsg)
     Set wb = Nothing
     Set ws = Nothing
     closeErrMsg = ""
+    hasError = False
 
     On Error Resume Next
     Set wb = gExcel.Workbooks.Open(filePath, 0, False)
@@ -119,26 +121,24 @@ Function UpdateCoverB7(filePath, ByRef updatedCount, ByRef errMsg)
     If Err.Number <> 0 Then
         errMsg = "シート「表紙」がありません: " & filePath
         Err.Clear
-        GoTo FinallyClose
-    End If
+        hasError = True
+    Else
+        currentValue = CStr(ws.Range("B7").Value)
+        newValue = Replace(currentValue, "ID_", "")
 
-    currentValue = CStr(ws.Range("B7").Value)
-    newValue = Replace(currentValue, "ID_", "")
-
-    If newValue <> currentValue Then
-        ws.Range("B7").Value = newValue
-        wb.Save
-        If Err.Number <> 0 Then
-            errMsg = "Excel保存に失敗しました: " & filePath & " / " & Err.Description
-            Err.Clear
-            GoTo FinallyClose
+        If newValue <> currentValue Then
+            ws.Range("B7").Value = newValue
+            wb.Save
+            If Err.Number <> 0 Then
+                errMsg = "Excel保存に失敗しました: " & filePath & " / " & Err.Description
+                Err.Clear
+                hasError = True
+            Else
+                updatedCount = 1
+            End If
         End If
-        updatedCount = 1
     End If
 
-    UpdateCoverB7 = True
-
-FinallyClose:
     If Not wb Is Nothing Then
         wb.Close False
         If Err.Number <> 0 Then
@@ -149,10 +149,12 @@ FinallyClose:
             Else
                 errMsg = errMsg & " / " & closeErrMsg
             End If
-            UpdateCoverB7 = False
+            hasError = True
         End If
     End If
     On Error GoTo 0
+
+    UpdateCoverB7 = (Not hasError)
 End Function
 
 Function RenameFileWithoutId(filePath, ByRef renamedPath, ByRef errMsg)
