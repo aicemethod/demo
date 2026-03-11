@@ -338,7 +338,7 @@ End Function
 Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, ByVal djKey, ByVal dmKey)
     Dim schemaName, displayName, customAttr, attrType, typeValue, requiredLevel
     Dim auditEnabled, secured, advFind, description, additionalData
-    Dim info, targetText, defaultText, rowKey
+    Dim info, targetText, rawTargetText, defaultText, rowKey
 
     schemaName = GetCellByHeader(dataArr, srcRow, headerMap, "Schema Name")
     displayName = GetCellByHeader(dataArr, srcRow, headerMap, "Display Name")
@@ -354,11 +354,11 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, B
     rowKey = Nz(dataArr(srcRow, 1))
 
     info = BuildAttributeTypeInfo(attrType, additionalData)
-    targetText = ExtractValueFromAdditionalData(additionalData, "Target:")
-    If targetText = "" Then
-        targetText = ExtractValueFromAdditionalData(additionalData, "targets:")
+    rawTargetText = ExtractValueFromAdditionalData(additionalData, "Target:")
+    If rawTargetText = "" Then
+        rawTargetText = ExtractValueFromAdditionalData(additionalData, "targets:")
     End If
-    targetText = ConvertPrefixList(targetText)
+    targetText = ConvertPrefixList(rawTargetText)
 
     defaultText = info(4)
     If LCase(defaultText) = "n/a" Then
@@ -380,6 +380,7 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, B
     outArr(outRow, 22) = secured
     outArr(outRow, 25) = advFind
     outArr(outRow, 26) = description
+    outArr(outRow, 33) = rawTargetText
 
     If LCase(Trim(rowKey)) = LCase(Trim(djKey)) Then
         outArr(outRow, 5) = "○"
@@ -1034,7 +1035,7 @@ Sub ApplyMemoMapping(wsField, rowCount)
     lastRow = 6 + rowCount
 
     For rowNo = 7 To lastRow
-        keyText = LCase(Trim(CStr(Nz(wsField.Cells(rowNo, 21).Value2))))
+        keyText = LCase(Trim(CStr(Nz(wsField.Cells(rowNo, 35).Value2))))
 
         If keyText <> "" Then
             If Not gMemoMap Is Nothing And gMemoMap.Exists(keyText) Then
