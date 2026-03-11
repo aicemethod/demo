@@ -351,6 +351,7 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, B
 
     If LCase(Trim(attrType)) = "text" Or LCase(Trim(attrType)) = "multiline text" Then
         outArr(outRow, 32) = additionalData
+        outArr(outRow, 10) = ExtractMaxLengthValue(additionalData)
     End If
 End Sub
 
@@ -625,15 +626,29 @@ Function ExtractValueFromAdditionalData(additionalData, keyword)
 End Function
 
 Function ExtractTextMaxLength(value)
+    ExtractTextMaxLength = ExtractMaxLengthByLabel(value, "TextMax Length:")
+End Function
+
+Function ExtractMaxLengthValue(value)
+    Dim result
+
+    result = ExtractMaxLengthByLabel(value, "Max length:")
+    If result = "" Then
+        result = ExtractMaxLengthByLabel(value, "TextMax Length:")
+    End If
+    ExtractMaxLengthValue = result
+End Function
+
+Function ExtractMaxLengthByLabel(value, labelText)
     Dim pos, tailText, i, ch, result
 
-    pos = InStr(1, CStr(value), "TextMax Length:", vbTextCompare)
+    pos = InStr(1, CStr(value), labelText, vbTextCompare)
     If pos = 0 Then
-        ExtractTextMaxLength = ""
+        ExtractMaxLengthByLabel = ""
         Exit Function
     End If
 
-    tailText = Mid(CStr(value), pos + Len("TextMax Length:"))
+    tailText = Mid(CStr(value), pos + Len(labelText))
     result = ""
     For i = 1 To Len(tailText)
         ch = Mid(tailText, i, 1)
@@ -643,7 +658,7 @@ Function ExtractTextMaxLength(value)
             Exit For
         End If
     Next
-    ExtractTextMaxLength = result
+    ExtractMaxLengthByLabel = result
 End Function
 
 Function ConvertPrefixName(value)
