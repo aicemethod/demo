@@ -293,10 +293,12 @@ Sub FillFieldSheet(wsField, fieldInfo, values1)
     wsField.Range("C7:AJ" & (6 + rowCount)).Value = outArr
     wsField.Range("C7:AJ" & (6 + rowCount)).Font.Color = COLOR_BLACK
 
-    wsField.Range("AG5").Value = "Display Name"
-    wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("D7:D" & (6 + rowCount)).Value
+    wsField.Range("AG5").Value = "Schema Name"
+    wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("AI7:AI" & (6 + rowCount)).Value
+    wsField.Range("AI7:AI" & (6 + rowCount)).ClearContents
 
     ApplyMemoMapping wsField, rowCount
+    TrimEmptyFieldRows wsField, rowCount
 End Sub
 
 Sub SortFieldArrayByCustomAttribute(ByRef outArr)
@@ -380,7 +382,7 @@ Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, B
     outArr(outRow, 22) = secured
     outArr(outRow, 25) = advFind
     outArr(outRow, 26) = description
-    outArr(outRow, 33) = rawTargetText
+    outArr(outRow, 33) = schemaName
 
     If LCase(Trim(rowKey)) = LCase(Trim(djKey)) Then
         outArr(outRow, 5) = "○"
@@ -1026,26 +1028,50 @@ Sub Cleanup()
 End Sub
 
 Sub ApplyMemoMapping(wsField, rowCount)
-    Dim rowNo, keyText, mappedText
+    Dim rowNo, keyText, mappedText, additionalData
     Dim lastRow
 
-    wsField.Range("AG5").Value = "ServiceCRMフィールド名"
     If rowCount <= 0 Then Exit Sub
 
     lastRow = 6 + rowCount
 
     For rowNo = 7 To lastRow
-        keyText = LCase(Trim(CStr(Nz(wsField.Cells(rowNo, 35).Value2))))
+        additionalData = CStr(Nz(wsField.Cells(rowNo, 34).Value2))
+        keyText = ExtractValueFromAdditionalData(additionalData, "Target:")
+        If keyText = "" Then
+            keyText = ExtractValueFromAdditionalData(additionalData, "targets:")
+        End If
+        keyText = LCase(Trim(CStr(keyText)))
 
         If keyText <> "" Then
             If Not gMemoMap Is Nothing And gMemoMap.Exists(keyText) Then
                 mappedText = gMemoMap(keyText)
-                wsField.Cells(rowNo, 33).Value = mappedText
+                wsField.Cells(rowNo, 21).Value = mappedText
             Else
                 wsField.Range(wsField.Cells(rowNo, 2), wsField.Cells(rowNo, 34)).Interior.Color = COLOR_GRAY
             End If
         End If
     Next
+End Sub
+
+Sub TrimEmptyFieldRows(wsField, rowCount)
+    Dim lastRow, rowNo, deleteFrom
+
+    If rowCount <= 0 Then Exit Sub
+
+    lastRow = 6 + rowCount
+    deleteFrom = 0
+
+    For rowNo = 7 To lastRow
+        If Trim(CStr(Nz(wsField.Cells(rowNo, 3).Value2))) = "" Then
+            deleteFrom = rowNo
+            Exit For
+        End If
+    Next
+
+    If deleteFrom > 0 Then
+        wsField.Rows(deleteFrom & ":" & lastRow).Delete
+    End If
 End Sub
 
 Sub AppendDetail(ByRef detail, ByVal message)
