@@ -288,11 +288,49 @@ Sub FillFieldSheet(wsField, fieldInfo, values1)
         FillFieldRow outArr, r - 1, dataArr, r, headerMap, djKey, dmKey
     Next
 
+    SortFieldArrayByCustomAttribute outArr
+
     wsField.Range("C7:AJ" & (6 + rowCount)).Value = outArr
     wsField.Range("C7:AJ" & (6 + rowCount)).Font.Color = COLOR_BLACK
 
     ApplyMemoMapping wsField, rowCount
 End Sub
+
+Sub SortFieldArrayByCustomAttribute(ByRef outArr)
+    Dim i, j, maxRow, maxCol
+    Dim rankI, rankJ, colNo, tempValue
+
+    maxRow = UBound(outArr, 1)
+    maxCol = UBound(outArr, 2)
+
+    For i = 1 To maxRow - 1
+        For j = i + 1 To maxRow
+            rankI = GetCustomSortRank(outArr(i, 4))
+            rankJ = GetCustomSortRank(outArr(j, 4))
+
+            If rankJ < rankI Then
+                For colNo = 1 To maxCol
+                    tempValue = outArr(i, colNo)
+                    outArr(i, colNo) = outArr(j, colNo)
+                    outArr(j, colNo) = tempValue
+                Next
+            End If
+        Next
+    Next
+End Sub
+
+Function GetCustomSortRank(value)
+    Dim textValue
+
+    textValue = Trim(CStr(value))
+    If textValue = "カスタム" Then
+        GetCustomSortRank = 0
+    ElseIf textValue = "標準" Then
+        GetCustomSortRank = 1
+    Else
+        GetCustomSortRank = 2
+    End If
+End Function
 
 Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap, ByVal djKey, ByVal dmKey)
     Dim schemaName, displayName, customAttr, attrType, typeValue, requiredLevel
