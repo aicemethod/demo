@@ -225,8 +225,8 @@ Sub FillTableSheet(wsTable, values1, fieldInfo)
     tableArr(4, 1) = ConvertBooleanForTable(values1(3))
     tableArr(5, 1) = ConvertPrefixName(values1(4))
     tableArr(6, 1) = ConvertPrefixName(values1(5))
-    tableArr(7, 1) = values1(6)
-    tableArr(8, 1) = values1(7)
+    tableArr(7, 1) = ConvertTableType(values1(6))
+    tableArr(8, 1) = ConvertOwnershipType(values1(7))
     tableArr(9, 1) = DefaultText(values1(8), "なし")
     tableArr(10, 1) = values1(9)
     tableArr(11, 1) = ConvertPrefixName(values1(10))
@@ -239,7 +239,7 @@ Sub FillTableSheet(wsTable, values1, fieldInfo)
         tableArr(13, 1) = ConvertBooleanForTable(foundData(4))
         tableArr(14, 1) = ConvertPrefixName(foundData(1))
         tableArr(15, 1) = ConvertPrefixName(dmKey)
-        tableArr(16, 1) = ConvertBooleanForTable(foundData(7))
+        tableArr(16, 1) = ConvertFieldRequirement(foundData(7))
         tableArr(17, 1) = ExtractTextMaxLength(foundData(12))
     Else
         tableArr(15, 1) = ConvertPrefixName(dmKey)
@@ -292,6 +292,9 @@ Sub FillFieldSheet(wsField, fieldInfo, values1)
 
     wsField.Range("C7:AJ" & (6 + rowCount)).Value = outArr
     wsField.Range("C7:AJ" & (6 + rowCount)).Font.Color = COLOR_BLACK
+
+    wsField.Range("AG5").Value = "Display Name"
+    wsField.Range("AG7:AG" & (6 + rowCount)).Value = wsField.Range("D7:D" & (6 + rowCount)).Value
 
     ApplyMemoMapping wsField, rowCount
 End Sub
@@ -601,6 +604,54 @@ Function ConvertRequiredLevel(value)
             ConvertRequiredLevel = "推奨項目"
         Case Else
             ConvertRequiredLevel = value
+    End Select
+End Function
+
+Function ConvertTableType(value)
+    Dim lowerVal
+
+    lowerVal = LCase(Trim(CStr(value)))
+    Select Case lowerVal
+        Case "standard"
+            ConvertTableType = "標準"
+        Case "activity"
+            ConvertTableType = "活動"
+        Case "virtual"
+            ConvertTableType = "仮想"
+        Case Else
+            ConvertTableType = value
+    End Select
+End Function
+
+Function ConvertOwnershipType(value)
+    Dim lowerVal
+
+    lowerVal = LCase(Trim(CStr(value)))
+    Select Case lowerVal
+        Case "organizationowned"
+            ConvertOwnershipType = "組織"
+        Case "userowned"
+            ConvertOwnershipType = "ユーザーまたはチーム"
+        Case "businessowned"
+            ConvertOwnershipType = ""
+        Case Else
+            ConvertOwnershipType = value
+    End Select
+End Function
+
+Function ConvertFieldRequirement(value)
+    Dim lowerVal
+
+    lowerVal = LCase(Trim(CStr(value)))
+    Select Case lowerVal
+        Case "none"
+            ConvertFieldRequirement = "任意"
+        Case "applicationrequired"
+            ConvertFieldRequirement = "必須"
+        Case "systemrequired"
+            ConvertFieldRequirement = "システム要求"
+        Case Else
+            ConvertFieldRequirement = value
     End Select
 End Function
 
