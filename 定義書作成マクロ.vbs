@@ -156,7 +156,7 @@ Function ProcessOneFile(filePath, outputFolderPath, ByRef detail)
     FillFieldSheet wsField, fieldInfo
     wsCover.Range("B7").Value = "エンティティ定義書_ID_" & displayName & "_v0.1"
 
-    outputPath = gFso.BuildPath(outputFolderPath, SanitizeFileName("エンティティ定義書_ID_" & displayName & "_v0.1.xlsx"))
+    outputPath = gFso.BuildPath(outputFolderPath, SanitizeFileName("エンティティ定義書_ID_" & displayName & "_v0.2.xlsx"))
     If SaveWorkbookAs(outWb, outputPath, errMsg) Then
         ProcessOneFile = True
     Else
@@ -269,14 +269,14 @@ Sub FillFieldSheet(wsField, fieldInfo)
     rowCount = UBound(dataArr, 1) - 1
     If rowCount <= 0 Then Exit Sub
 
-    outArr = wsField.Range("D7:AK" & (6 + rowCount)).Value
+    outArr = wsField.Range("C7:AJ" & (6 + rowCount)).Value
 
     For r = 2 To UBound(dataArr, 1)
         FillFieldRow outArr, r - 1, dataArr, r, headerMap
     Next
 
-    wsField.Range("D7:AK" & (6 + rowCount)).Value = outArr
-    wsField.Range("D7:AK" & (6 + rowCount)).Font.Color = COLOR_BLACK
+    wsField.Range("C7:AJ" & (6 + rowCount)).Value = outArr
+    wsField.Range("C7:AJ" & (6 + rowCount)).Font.Color = COLOR_BLACK
 End Sub
 
 Sub FillFieldRow(ByRef outArr, ByVal outRow, dataArr, ByVal srcRow, headerMap)
